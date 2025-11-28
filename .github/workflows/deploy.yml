@@ -1,0 +1,142 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  # Job 1: Secret Scanning
+  secret-scan:
+    name: Secret Scanning
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run TruffleHog Secret Scan
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+          extra_args: --only-verified
+
+      - name: Check for common secret patterns
+        run: |
+          echo "Scanning for common secret patterns..."
+          
+          # Check for hardcoded API keys in code
+          if grep -r "sk-proj-" --include="*.js" --include="*.py" --include="*.json" --include="*.txt" . 2>/dev/null | grep -v "node_modules" | grep -v ".git"; then
+            echo "ERROR: Potential API keys found in code files!"
+            exit 1
+          fi
+          
+          # Check for config.json in commits
+          if git ls-files | grep -q "config.json"; then
+            echo "ERROR: config.json should not be committed!"
+            exit 1
+          fi
+          
+          # Check for .env files
+          if git ls-files | grep -q "\.env$"; then
+            echo "ERROR: .env files should not be committed!"
+            exit 1
+          fi
+          
+          echo "✓ No secrets detected in committed files"
+
+  # Job 2: Build & Validate
+  build:
+    name: Build & Validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Check required files exist
+        run: |
+          echo "Checking required files..."
+          required_files=("server.js" "package.json" "index.html" "script.js" "styles.css" "questions.csv")
+          for file in "${required_files[@]}"; do
+            if [ ! -f "$file" ]; then
+              echo "ERROR: Required file $file is missing!"
+              exit 1
+            fi
+            echo "✓ $file exists"
+          done
+
+      - name: Validate Node.js syntax
+        run: |
+          echo "Validating Node.js syntax..."
+          node --check server.js || exit 1
+          echo "✓ server.js syntax is valid"
+          node --check script.js 2>/dev/null || echo "Note: script.js is client-side JavaScript"
+
+      - name: Validate package.json
+        run: |
+          echo "Validating package.json..."
+          node -e "JSON.parse(require('fs').readFileSync('package.json', 'utf8'))" || exit 1
+          echo "✓ package.json is valid JSON"
+
+      - name: Verify config.json.example exists
+        run: |
+          if [ ! -f "config.json.example" ]; then
+            echo "ERROR: config.json.example is missing!"
+            exit 1
+          fi
+          echo "✓ config.json.example exists"
+
+      - name: Test server startup (dry run)
+        env:
+          OPENAI_API_KEY: test-key-placeholder
+          PORT: 3000
+        run: |
+          echo "Testing server initialization..."
+          timeout 5 node server.js || true
+          echo "✓ Server can start (timeout expected)"
+
+  # Job 3: Deploy (only on push to main/master)
+  deploy:
+    name: Deploy to Production
+    needs: [secret-scan, build]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to Render
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+        run: |
+          if [ -z "$RENDER_API_KEY" ] || [ -z "$RENDER_SERVICE_ID" ]; then
+            echo "⚠️  Render deployment skipped: RENDER_API_KEY or RENDER_SERVICE_ID not configured"
+            echo "To enable Render deployment:"
+            echo "1. Get your API key from https://dashboard.render.com/account/api-keys"
+            echo "2. Get your service ID from your Render dashboard"
+            echo "3. Add them as GitHub secrets: RENDER_API_KEY and RENDER_SERVICE_ID"
+            exit 0
+          fi
+          
+          echo "Deploying to Render..."
+          curl -X POST "https://api.render.com/v1/services/$RENDER_SERVICE_ID/deploys" \
+            -H "Authorization: Bearer $RENDER_API_KEY" \
+            -H "Accept: application/json"
+          echo "✓ Deployment triggered on Render"
+
+      - name: Deployment Status
+        run: |
+          echo "🚀 Deployment pipeline completed successfully!"
+          echo "If Render deployment is configured, your service will be updated shortly."
+

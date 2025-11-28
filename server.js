@@ -3,25 +3,31 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 
-// Load configuration
-let config = {};
-try {
-    const configData = fs.readFileSync('config.json', 'utf8');
-    config = JSON.parse(configData);
-} catch (error) {
-    console.error('Error loading config.json:', error.message);
-    console.error('Please create config.json with your OpenAI API key.');
-    process.exit(1);
+// Load configuration - support both environment variables (production) and config.json (local dev)
+let OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+
+// Fallback to config.json for local development
+if (!OPENAI_API_KEY) {
+    let config = {};
+    try {
+        const configData = fs.readFileSync('config.json', 'utf8');
+        config = JSON.parse(configData);
+        OPENAI_API_KEY = config.openai_api_key;
+    } catch (error) {
+        // config.json doesn't exist or is invalid - this is OK if OPENAI_API_KEY is set via env var
+    }
 }
 
-const OPENAI_API_KEY = config.openai_api_key;
-
+// Validate API key
 if (!OPENAI_API_KEY || OPENAI_API_KEY === 'YOUR_OPENAI_API_KEY_HERE') {
-    console.error('Please set your OpenAI API key in config.json');
+    console.error('Error: OpenAI API key not found.');
+    console.error('Please set OPENAI_API_KEY environment variable or create config.json with your API key.');
+    console.error('Get your API key from https://platform.openai.com/api-keys');
     process.exit(1);
 }
 
-const PORT = 3000;
+// Use PORT from environment variable (required by hosting platforms) or default to 3000
+const PORT = process.env.PORT || 3000;
 
 // Serve static files
 function serveStaticFile(filePath, res) {
@@ -204,7 +210,11 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, () => {
-    console.log(`Family Feud server running at http://localhost:${PORT}`);
-    console.log('Make sure your OpenAI API key is set in config.json');
+    console.log(`Family Feud server running on port ${PORT}`);
+    if (process.env.OPENAI_API_KEY) {
+        console.log('Using OpenAI API key from environment variable');
+    } else {
+        console.log('Using OpenAI API key from config.json');
+    }
 });
 
