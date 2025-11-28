@@ -65,7 +65,7 @@ To clone and set up this repository:
 
 ### Repository
 
-[GitHub Repository](https://github.com/your-username/your-repo-name) - Update this link after creating your repository
+[GitHub Repository](https://github.com/aryanzodge123/family-feud) - View the source code on GitHub
 
 ## Security Note
 
