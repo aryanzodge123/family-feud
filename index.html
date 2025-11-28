@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Family Feud - Host Control Panel</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1 class="logo">FAMILY FEUD</h1>
+            <div class="host-name">Hosted by Steve Zodge</div>
+        </header>
+
+        <!-- Team Scores -->
+        <div class="scores-container">
+            <div class="team-score team-1">
+                <div class="team-name">TEAM 1</div>
+                <div class="score" id="team1-score">0</div>
+            </div>
+            <div class="team-score team-2">
+                <div class="team-name">TEAM 2</div>
+                <div class="score" id="team2-score">0</div>
+            </div>
+        </div>
+
+        <!-- Question Display -->
+        <div class="question-container">
+            <div class="question-label">SURVEY SAYS...</div>
+            <div class="question" id="question-text">Click "New Question" to start</div>
+        </div>
+
+        <!-- Player Answer Input -->
+        <div class="answer-input-container">
+            <div class="answer-input-label">Player Answer Check</div>
+            <div class="answer-input-wrapper">
+                <input type="text" id="player-answer-input" placeholder="Type player's answer here..." autocomplete="off">
+                <button class="control-btn btn-primary" id="check-answer-btn">Check Answer</button>
+            </div>
+            <div id="check-status" class="check-status"></div>
+        </div>
+
+        <!-- Answer Board -->
+        <div class="answers-container">
+            <div class="answer-row">
+                <div class="answer-slot" data-index="0">
+                    <div class="answer-number">1</div>
+                    <div class="answer-text" id="answer-0">?</div>
+                    <div class="answer-points" id="points-0"></div>
+                </div>
+                <div class="answer-slot" data-index="1">
+                    <div class="answer-number">2</div>
+                    <div class="answer-text" id="answer-1">?</div>
+                    <div class="answer-points" id="points-1"></div>
+                </div>
+            </div>
+            <div class="answer-row">
+                <div class="answer-slot" data-index="2">
+                    <div class="answer-number">3</div>
+                    <div class="answer-text" id="answer-2">?</div>
+                    <div class="answer-points" id="points-2"></div>
+                </div>
+                <div class="answer-slot" data-index="3">
+                    <div class="answer-number">4</div>
+                    <div class="answer-text" id="answer-3">?</div>
+                    <div class="answer-points" id="points-3"></div>
+                </div>
+            </div>
+            <div class="answer-row">
+                <div class="answer-slot" data-index="4">
+                    <div class="answer-number">5</div>
+                    <div class="answer-text" id="answer-4">?</div>
+                    <div class="answer-points" id="points-4"></div>
+                </div>
+                <div class="answer-slot" data-index="5">
+                    <div class="answer-number">6</div>
+                    <div class="answer-text" id="answer-5">?</div>
+                    <div class="answer-points" id="points-5"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Strikes Display -->
+        <div class="strikes-container">
+            <div class="strikes-label">STRIKES</div>
+            <div class="strikes-display">
+                <div class="strike" id="strike-1">✗</div>
+                <div class="strike" id="strike-2">✗</div>
+                <div class="strike" id="strike-3">✗</div>
+            </div>
+        </div>
+
+        <!-- Host Controls -->
+        <div class="controls-container">
+            <button class="control-btn btn-primary" id="new-question-btn">New Question</button>
+            <button class="control-btn btn-secondary" id="reveal-answer-btn">Reveal Answer</button>
+            <button class="control-btn btn-secondary" id="add-strike-btn">Add Strike</button>
+            <button class="control-btn btn-secondary" id="remove-strike-btn">Remove Strike</button>
+            <button class="control-btn btn-success" id="add-points-btn">Add Points</button>
+            <button class="control-btn btn-warning" id="reset-round-btn">Reset Round</button>
+            <button class="control-btn btn-danger" id="reset-game-btn">Reset Game</button>
+        </div>
+
+        <!-- Points Input -->
+        <div class="points-input-container">
+            <label for="points-input">Points to Add:</label>
+            <input type="number" id="points-input" value="0" min="0">
+            <label for="team-select">Team:</label>
+            <select id="team-select">
+                <option value="1">Team 1</option>
+                <option value="2">Team 2</option>
+            </select>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
+
