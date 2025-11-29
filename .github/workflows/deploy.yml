@@ -25,23 +25,73 @@ jobs:
 
       - name: Check for common secret patterns
         run: |
-          echo "Scanning for common secret patterns..."
+          echo "Scanning for common secret patterns in committed files..."
           
-          # Check for hardcoded API keys in code
-          if grep -r "sk-proj-" --include="*.js" --include="*.py" --include="*.json" --include="*.txt" . 2>/dev/null | grep -v "node_modules" | grep -v ".git"; then
-            echo "ERROR: Potential API keys found in code files!"
-            exit 1
+          # Get the commit range - check commits being pushed
+          if [ "${{ github.event_name }}" == "push" ]; then
+            # For push events, check commits being pushed
+            if [ -n "${{ github.event.before }}" ] && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+              COMMIT_RANGE="${{ github.event.before }}..${{ github.event.after }}"
+            else
+              # First commit or single commit push
+              COMMIT_RANGE="${{ github.event.after }}"
+            fi
+          elif [ "${{ github.event_name }}" == "pull_request" ]; then
+            # For PR events, check commits in the PR
+            COMMIT_RANGE="${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}"
+          else
+            # For other events, check last commit
+            COMMIT_RANGE="HEAD~1..HEAD"
           fi
           
-          # Check for config.json in commits
-          if git ls-files | grep -q "config.json"; then
+          echo "Checking commit range: $COMMIT_RANGE"
+          
+          # Get list of files changed in the commit(s)
+          CHANGED_FILES=$(git diff --name-only --diff-filter=ACMRT $COMMIT_RANGE 2>/dev/null || git show --name-only --format="" $COMMIT_RANGE 2>/dev/null || echo "")
+          
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "No files changed to check"
+            exit 0
+          fi
+          
+          echo "Changed files:"
+          echo "$CHANGED_FILES"
+          
+          # Check if config.json is in the changed files
+          if echo "$CHANGED_FILES" | grep -q "^config.json$"; then
             echo "ERROR: config.json should not be committed!"
+            echo "Please ensure config.json is in .gitignore and remove it from git if it was previously tracked."
             exit 1
           fi
           
-          # Check for .env files
-          if git ls-files | grep -q "\.env$"; then
+          # Check if .env files are in the changed files
+          if echo "$CHANGED_FILES" | grep -q "\.env$"; then
             echo "ERROR: .env files should not be committed!"
+            exit 1
+          fi
+          
+          # Check for hardcoded API keys in changed files
+          SECRET_FOUND=false
+          for file in $CHANGED_FILES; do
+            # Skip if file doesn't exist or is binary
+            if [ ! -f "$file" ]; then
+              continue
+            fi
+            
+            # Check for API key patterns in the file
+            if grep -q "sk-proj-" "$file" 2>/dev/null; then
+              echo "ERROR: Potential API key found in $file!"
+              SECRET_FOUND=true
+            fi
+            
+            # Check for other common secret patterns
+            if grep -qiE "(api[_-]?key|secret|password|token)\s*[:=]\s*['\"]?sk-" "$file" 2>/dev/null; then
+              echo "ERROR: Potential secret found in $file!"
+              SECRET_FOUND=true
+            fi
+          done
+          
+          if [ "$SECRET_FOUND" = true ]; then
             exit 1
           fi
           
