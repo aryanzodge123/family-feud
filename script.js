@@ -91,6 +91,163 @@ const playerAnswerInput = document.getElementById('player-answer-input');
 const checkAnswerBtn = document.getElementById('check-answer-btn');
 const checkStatus = document.getElementById('check-status');
 
+// Feedback Elements
+const feedbackOverlay = document.getElementById('feedback-overlay');
+const confettiCanvas = document.getElementById('confetti-canvas');
+const bigStrike = document.getElementById('big-strike');
+const confettiCtx = confettiCanvas.getContext('2d');
+
+// Confetti Configuration
+let confettiPieces = [];
+let confettiAnimationId = null;
+
+// Resize confetti canvas to match window
+function resizeConfettiCanvas() {
+    confettiCanvas.width = window.innerWidth;
+    confettiCanvas.height = window.innerHeight;
+}
+resizeConfettiCanvas();
+window.addEventListener('resize', resizeConfettiCanvas);
+
+// Confetti particle class
+class ConfettiPiece {
+    constructor() {
+        this.x = Math.random() * confettiCanvas.width;
+        this.y = -20;
+        this.size = Math.random() * 12 + 8;
+        this.speedX = Math.random() * 6 - 3;
+        this.speedY = Math.random() * 4 + 3;
+        this.rotation = Math.random() * 360;
+        this.rotationSpeed = Math.random() * 10 - 5;
+        this.color = this.getRandomColor();
+        this.shape = Math.random() > 0.5 ? 'rect' : 'circle';
+    }
+
+    getRandomColor() {
+        const colors = [
+            '#ffd700', // Gold
+            '#ff6b6b', // Red
+            '#4ecdc4', // Teal
+            '#45b7d1', // Blue
+            '#96ceb4', // Green
+            '#ffeaa7', // Yellow
+            '#dfe6e9', // White
+            '#fd79a8', // Pink
+            '#a29bfe', // Purple
+            '#00b894'  // Emerald
+        ];
+        return colors[Math.floor(Math.random() * colors.length)];
+    }
+
+    update() {
+        this.x += this.speedX;
+        this.y += this.speedY;
+        this.rotation += this.rotationSpeed;
+        this.speedY += 0.1; // Gravity
+        this.speedX *= 0.99; // Air resistance
+    }
+
+    draw() {
+        confettiCtx.save();
+        confettiCtx.translate(this.x, this.y);
+        confettiCtx.rotate((this.rotation * Math.PI) / 180);
+        confettiCtx.fillStyle = this.color;
+        
+        if (this.shape === 'rect') {
+            confettiCtx.fillRect(-this.size / 2, -this.size / 4, this.size, this.size / 2);
+        } else {
+            confettiCtx.beginPath();
+            confettiCtx.arc(0, 0, this.size / 2, 0, Math.PI * 2);
+            confettiCtx.fill();
+        }
+        
+        confettiCtx.restore();
+    }
+}
+
+// Start confetti animation
+function startConfetti() {
+    confettiPieces = [];
+    
+    // Create initial burst of confetti
+    for (let i = 0; i < 150; i++) {
+        const piece = new ConfettiPiece();
+        piece.y = Math.random() * confettiCanvas.height * 0.3;
+        piece.speedY = Math.random() * 8 + 2;
+        confettiPieces.push(piece);
+    }
+    
+    animateConfetti();
+}
+
+// Animate confetti
+function animateConfetti() {
+    confettiCtx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height);
+    
+    confettiPieces.forEach((piece, index) => {
+        piece.update();
+        piece.draw();
+        
+        // Remove pieces that are off screen
+        if (piece.y > confettiCanvas.height + 50) {
+            confettiPieces.splice(index, 1);
+        }
+    });
+    
+    if (confettiPieces.length > 0) {
+        confettiAnimationId = requestAnimationFrame(animateConfetti);
+    } else {
+        confettiCtx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height);
+    }
+}
+
+// Stop confetti animation
+function stopConfetti() {
+    if (confettiAnimationId) {
+        cancelAnimationFrame(confettiAnimationId);
+        confettiAnimationId = null;
+    }
+    confettiPieces = [];
+    confettiCtx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height);
+}
+
+// Show correct answer feedback (confetti + green overlay)
+function showCorrectFeedback() {
+    // Start confetti
+    startConfetti();
+    
+    // Show green overlay
+    feedbackOverlay.classList.add('correct');
+    
+    // Remove overlay after 1 second
+    setTimeout(() => {
+        feedbackOverlay.classList.remove('correct');
+    }, 1000);
+    
+    // Stop confetti after 2 seconds
+    setTimeout(() => {
+        stopConfetti();
+    }, 2000);
+}
+
+// Show incorrect answer feedback (big strike + red overlay)
+function showIncorrectFeedback() {
+    // Show red overlay
+    feedbackOverlay.classList.add('incorrect');
+    
+    // Show big strike
+    bigStrike.classList.add('active');
+    
+    // Remove effects after 1 second
+    setTimeout(() => {
+        feedbackOverlay.classList.remove('incorrect');
+    }, 1000);
+    
+    setTimeout(() => {
+        bigStrike.classList.remove('active');
+    }, 1100);
+}
+
 // Buttons
 const newQuestionBtn = document.getElementById('new-question-btn');
 const revealAnswerBtn = document.getElementById('reveal-answer-btn');
@@ -193,6 +350,9 @@ async function checkPlayerAnswer() {
             );
             
             if (matchedIndex !== -1 && !revealedAnswers.includes(matchedIndex)) {
+                // Show correct feedback (confetti + green overlay)
+                showCorrectFeedback();
+                
                 // Reveal the matching answer
                 revealAnswer(matchedIndex);
                 checkStatus.textContent = `Match! Revealed: "${matchedAnswerText}"`;
@@ -210,6 +370,9 @@ async function checkPlayerAnswer() {
                 checkStatus.className = 'check-status error';
             }
         } else {
+            // Show incorrect feedback (big strike + red overlay)
+            showIncorrectFeedback();
+            
             // No match - add a strike
             addStrike();
             checkStatus.textContent = `No match! Strike added. Reason: ${jsonResponse.reason || 'Answer not found on board'}`;
