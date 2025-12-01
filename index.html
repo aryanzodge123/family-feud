@@ -7,21 +7,67 @@
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <div class="container">
+    <!-- Setup Screen -->
+    <div id="setup-screen" class="setup-screen">
+        <div class="setup-container">
+            <h1 class="setup-logo">FAMILY FEUD</h1>
+            <p class="setup-subtitle">Game Setup</p>
+            
+            <div class="setup-form">
+                <div class="setup-section">
+                    <label class="setup-label">Team Names</label>
+                    <div class="team-inputs">
+                        <div class="team-input-group team-1-input">
+                            <span class="team-indicator">Team 1</span>
+                            <input type="text" id="team1-name-input" placeholder="Enter Team 1 Name" maxlength="20">
+                        </div>
+                        <div class="team-input-group team-2-input">
+                            <span class="team-indicator">Team 2</span>
+                            <input type="text" id="team2-name-input" placeholder="Enter Team 2 Name" maxlength="20">
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="setup-section">
+                    <label class="setup-label">Number of Rounds</label>
+                    <div class="rounds-selector">
+                        <button type="button" class="round-btn" data-rounds="3">3</button>
+                        <button type="button" class="round-btn" data-rounds="5">5</button>
+                        <button type="button" class="round-btn selected" data-rounds="7">7</button>
+                        <button type="button" class="round-btn" data-rounds="10">10</button>
+                        <div class="custom-rounds">
+                            <input type="number" id="custom-rounds-input" placeholder="Custom" min="1" max="50">
+                        </div>
+                    </div>
+                </div>
+                
+                <button type="button" id="start-game-btn" class="start-game-btn">
+                    START GAME
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="container" id="game-container" style="display: none;">
         <!-- Header -->
         <header class="header">
             <h1 class="logo">FAMILY FEUD</h1>
             <div class="host-name">As seen on TV!</div>
         </header>
 
+        <!-- Round Counter -->
+        <div class="round-counter">
+            <span>Round <span id="current-round">1</span> of <span id="total-rounds">7</span></span>
+        </div>
+
         <!-- Team Scores -->
         <div class="scores-container">
             <div class="team-score team-1">
-                <div class="team-name">TEAM 1</div>
+                <div class="team-name" id="team1-display-name">TEAM 1</div>
                 <div class="score" id="team1-score">0</div>
             </div>
             <div class="team-score team-2">
-                <div class="team-name">TEAM 2</div>
+                <div class="team-name" id="team2-display-name">TEAM 2</div>
                 <div class="score" id="team2-score">0</div>
             </div>
         </div>
@@ -101,6 +147,7 @@
             <button class="control-btn btn-success" id="add-points-btn">Add Points</button>
             <button class="control-btn btn-warning" id="reset-round-btn">Reset Round</button>
             <button class="control-btn btn-danger" id="reset-game-btn">Reset Game</button>
+            <button class="control-btn btn-end-game" id="end-game-btn">End Game</button>
         </div>
 
         <!-- Points Input -->
@@ -109,9 +156,37 @@
             <input type="number" id="points-input" value="0" min="0">
             <label for="team-select">Team:</label>
             <select id="team-select">
-                <option value="1">Team 1</option>
-                <option value="2">Team 2</option>
+                <option value="1" id="team-select-option1">Team 1</option>
+                <option value="2" id="team-select-option2">Team 2</option>
             </select>
+        </div>
+    </div>
+
+    <!-- End Game Screen -->
+    <div id="end-screen" class="end-screen" style="display: none;">
+        <div class="end-container">
+            <h1 class="end-title">GAME OVER</h1>
+            
+            <div id="winner-announcement" class="winner-announcement">
+                <div class="trophy">🏆</div>
+                <div class="winner-text" id="winner-text">TEAM WINS!</div>
+            </div>
+            
+            <div class="final-scores">
+                <div class="final-score-card team-1-final">
+                    <div class="final-team-name" id="final-team1-name">TEAM 1</div>
+                    <div class="final-score-value" id="final-team1-score">0</div>
+                </div>
+                <div class="vs-divider">VS</div>
+                <div class="final-score-card team-2-final">
+                    <div class="final-team-name" id="final-team2-name">TEAM 2</div>
+                    <div class="final-score-value" id="final-team2-score">0</div>
+                </div>
+            </div>
+            
+            <button type="button" id="play-again-btn" class="play-again-btn">
+                PLAY AGAIN
+            </button>
         </div>
     </div>
 

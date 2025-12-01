@@ -7,6 +7,13 @@ let team2Score = 0;
 let currentRevealIndex = 0;
 let gameData = []; // Will be loaded from CSV
 
+// Game Settings
+let team1Name = 'TEAM 1';
+let team2Name = 'TEAM 2';
+let totalRounds = 7;
+let currentRound = 1;
+let usedQuestionIndices = []; // Track which questions have been used
+
 // Load questions from CSV file
 async function loadQuestionsFromCSV() {
     try {
@@ -248,6 +255,32 @@ function showIncorrectFeedback() {
     }, 1100);
 }
 
+// Setup Screen Elements
+const setupScreen = document.getElementById('setup-screen');
+const gameContainer = document.getElementById('game-container');
+const team1NameInput = document.getElementById('team1-name-input');
+const team2NameInput = document.getElementById('team2-name-input');
+const roundBtns = document.querySelectorAll('.round-btn');
+const customRoundsInput = document.getElementById('custom-rounds-input');
+const startGameBtn = document.getElementById('start-game-btn');
+
+// Game Display Elements
+const team1DisplayName = document.getElementById('team1-display-name');
+const team2DisplayName = document.getElementById('team2-display-name');
+const currentRoundEl = document.getElementById('current-round');
+const totalRoundsEl = document.getElementById('total-rounds');
+const teamSelectOption1 = document.getElementById('team-select-option1');
+const teamSelectOption2 = document.getElementById('team-select-option2');
+
+// End Screen Elements
+const endScreen = document.getElementById('end-screen');
+const winnerText = document.getElementById('winner-text');
+const finalTeam1Name = document.getElementById('final-team1-name');
+const finalTeam2Name = document.getElementById('final-team2-name');
+const finalTeam1Score = document.getElementById('final-team1-score');
+const finalTeam2Score = document.getElementById('final-team2-score');
+const playAgainBtn = document.getElementById('play-again-btn');
+
 // Buttons
 const newQuestionBtn = document.getElementById('new-question-btn');
 const revealAnswerBtn = document.getElementById('reveal-answer-btn');
@@ -256,11 +289,26 @@ const removeStrikeBtn = document.getElementById('remove-strike-btn');
 const addPointsBtn = document.getElementById('add-points-btn');
 const resetRoundBtn = document.getElementById('reset-round-btn');
 const resetGameBtn = document.getElementById('reset-game-btn');
+const endGameBtn = document.getElementById('end-game-btn');
 
 // Initialize
 async function init() {
     // Load questions from CSV first
     await loadQuestionsFromCSV();
+    
+    // Setup screen event listeners
+    setupRoundButtons();
+    startGameBtn.addEventListener('click', startGame);
+    playAgainBtn.addEventListener('click', playAgain);
+    
+    // Allow Enter key to start game from setup
+    [team1NameInput, team2NameInput, customRoundsInput].forEach(input => {
+        input.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                startGame();
+            }
+        });
+    });
     
     // Add click handlers to answer slots for direct reveal
     answerSlots.forEach((slot, index) => {
@@ -279,6 +327,7 @@ async function init() {
     addPointsBtn.addEventListener('click', addPoints);
     resetRoundBtn.addEventListener('click', resetRound);
     resetGameBtn.addEventListener('click', resetGame);
+    endGameBtn.addEventListener('click', endGameEarly);
     checkAnswerBtn.addEventListener('click', checkPlayerAnswer);
     
     // Allow Enter key to submit answer
@@ -287,6 +336,163 @@ async function init() {
             checkPlayerAnswer();
         }
     });
+}
+
+// Setup round selection buttons
+function setupRoundButtons() {
+    roundBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            // Remove selected class from all buttons
+            roundBtns.forEach(b => b.classList.remove('selected'));
+            // Add selected class to clicked button
+            btn.classList.add('selected');
+            // Clear custom input
+            customRoundsInput.value = '';
+        });
+    });
+    
+    // Custom rounds input - deselect preset buttons when typing
+    customRoundsInput.addEventListener('input', () => {
+        if (customRoundsInput.value) {
+            roundBtns.forEach(b => b.classList.remove('selected'));
+        }
+    });
+}
+
+// Start the game from setup screen
+function startGame() {
+    // Get team names (use defaults if empty)
+    team1Name = team1NameInput.value.trim().toUpperCase() || 'TEAM 1';
+    team2Name = team2NameInput.value.trim().toUpperCase() || 'TEAM 2';
+    
+    // Get number of rounds
+    const customRounds = parseInt(customRoundsInput.value);
+    if (customRounds && customRounds > 0) {
+        totalRounds = Math.min(customRounds, 50); // Cap at 50 rounds
+    } else {
+        // Find selected preset button
+        const selectedBtn = document.querySelector('.round-btn.selected');
+        if (selectedBtn) {
+            totalRounds = parseInt(selectedBtn.dataset.rounds);
+        }
+    }
+    
+    // Reset game state
+    currentRound = 1;
+    usedQuestionIndices = [];
+    team1Score = 0;
+    team2Score = 0;
+    
+    // Update UI with team names
+    team1DisplayName.textContent = team1Name;
+    team2DisplayName.textContent = team2Name;
+    teamSelectOption1.textContent = team1Name;
+    teamSelectOption2.textContent = team2Name;
+    
+    // Update round display
+    currentRoundEl.textContent = currentRound;
+    totalRoundsEl.textContent = totalRounds;
+    
+    // Update scores display
+    team1ScoreEl.textContent = 0;
+    team2ScoreEl.textContent = 0;
+    
+    // Hide setup screen, show game
+    setupScreen.style.display = 'none';
+    gameContainer.style.display = 'block';
+    
+    // Load first question
+    loadNewQuestion();
+}
+
+// End game early (from button)
+function endGameEarly() {
+    if (confirm('Are you sure you want to end the game now? This will show the final results.')) {
+        showEndScreen();
+    }
+}
+
+// Show end game screen
+function showEndScreen() {
+    // Determine winner
+    const isTie = team1Score === team2Score;
+    const team1Wins = team1Score > team2Score;
+    
+    // Update winner text
+    if (isTie) {
+        winnerText.textContent = "IT'S A TIE!";
+        winnerText.classList.add('tie');
+    } else {
+        const winnerName = team1Wins ? team1Name : team2Name;
+        winnerText.textContent = `${winnerName} WINS!`;
+        winnerText.classList.remove('tie');
+    }
+    
+    // Update team names and scores
+    finalTeam1Name.textContent = team1Name;
+    finalTeam2Name.textContent = team2Name;
+    finalTeam1Score.textContent = team1Score;
+    finalTeam2Score.textContent = team2Score;
+    
+    // Highlight winner's card
+    const team1Card = document.querySelector('.team-1-final');
+    const team2Card = document.querySelector('.team-2-final');
+    team1Card.classList.remove('winner');
+    team2Card.classList.remove('winner');
+    
+    if (!isTie) {
+        if (team1Wins) {
+            team1Card.classList.add('winner');
+        } else {
+            team2Card.classList.add('winner');
+        }
+    }
+    
+    // Hide game, show end screen
+    gameContainer.style.display = 'none';
+    endScreen.style.display = 'flex';
+    
+    // Start celebratory confetti for winner (not for tie)
+    if (!isTie) {
+        startConfetti();
+        setTimeout(() => {
+            stopConfetti();
+        }, 3000);
+    }
+}
+
+// Play again - return to setup screen
+function playAgain() {
+    // Hide end screen
+    endScreen.style.display = 'none';
+    
+    // Reset game state
+    currentQuestion = null;
+    questionText.textContent = 'Click "New Question" to start';
+    team1Score = 0;
+    team2Score = 0;
+    currentRound = 1;
+    usedQuestionIndices = [];
+    
+    // Reset UI
+    team1ScoreEl.textContent = 0;
+    team2ScoreEl.textContent = 0;
+    
+    // Reset answer slots
+    answerSlots.forEach(slot => {
+        slot.classList.remove('revealed');
+        const answerTextEl = slot.querySelector('.answer-text');
+        const answerPointsEl = slot.querySelector('.answer-points');
+        answerTextEl.textContent = '?';
+        answerPointsEl.textContent = '';
+    });
+    
+    // Reset strikes
+    strikes = 0;
+    updateStrikes();
+    
+    // Show setup screen
+    setupScreen.style.display = 'flex';
 }
 
 // Check player answer using ChatGPT via backend
@@ -404,9 +610,39 @@ function loadNewQuestion() {
         return;
     }
     
-    // Select a random question
-    const randomIndex = Math.floor(Math.random() * gameData.length);
-    currentQuestion = JSON.parse(JSON.stringify(gameData[randomIndex])); // Deep copy
+    // Check if we've reached the round limit
+    if (currentQuestion !== null && currentRound >= totalRounds) {
+        // Game over - show end screen
+        showEndScreen();
+        return;
+    }
+    
+    // Increment round if not first question
+    if (currentQuestion !== null) {
+        currentRound++;
+        currentRoundEl.textContent = currentRound;
+    }
+    
+    // Get available question indices (not yet used)
+    let availableIndices = [];
+    for (let i = 0; i < gameData.length; i++) {
+        if (!usedQuestionIndices.includes(i)) {
+            availableIndices.push(i);
+        }
+    }
+    
+    // If all questions used, reset the pool
+    if (availableIndices.length === 0) {
+        usedQuestionIndices = [];
+        availableIndices = gameData.map((_, i) => i);
+    }
+    
+    // Select a random question from available
+    const randomAvailableIndex = Math.floor(Math.random() * availableIndices.length);
+    const questionIndex = availableIndices[randomAvailableIndex];
+    usedQuestionIndices.push(questionIndex);
+    
+    currentQuestion = JSON.parse(JSON.stringify(gameData[questionIndex])); // Deep copy
     
     // Reset round state
     revealedAnswers = [];
@@ -579,6 +815,15 @@ function resetGame() {
         
         currentQuestion = null;
         questionText.textContent = 'Click "New Question" to start';
+        
+        // Reset round tracking
+        currentRound = 1;
+        usedQuestionIndices = [];
+        currentRoundEl.textContent = currentRound;
+        
+        // Return to setup screen
+        setupScreen.style.display = 'flex';
+        gameContainer.style.display = 'none';
         
         resetRound();
     }
