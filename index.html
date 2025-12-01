@@ -49,88 +49,30 @@
     </div>
 
     <div class="container" id="game-container" style="display: none;">
-        <!-- Header -->
-        <header class="header">
-            <h1 class="logo">FAMILY FEUD</h1>
-            <div class="host-name">As seen on TV!</div>
-        </header>
-
-        <!-- Round Counter -->
-        <div class="round-counter">
-            <span>Round <span id="current-round">1</span> of <span id="total-rounds">7</span></span>
-        </div>
-
-        <!-- Team Scores -->
-        <div class="scores-container">
-            <div class="team-score team-1">
+        <!-- Question Display with Team Scores -->
+        <div class="question-container">
+            <!-- Team 1 Score (Left) -->
+            <div class="team-score-inline team-1">
                 <div class="team-name" id="team1-display-name">TEAM 1</div>
                 <div class="score" id="team1-score">0</div>
             </div>
-            <div class="team-score team-2">
+            
+            <!-- Question Content (Center) -->
+            <div class="question-content">
+                <div class="question-label">Round <span id="current-round">1</span> of <span id="total-rounds">7</span></div>
+                <div class="question" id="question-text">Click "New Question" to start</div>
+            </div>
+            
+            <!-- Team 2 Score (Right) -->
+            <div class="team-score-inline team-2">
                 <div class="team-name" id="team2-display-name">TEAM 2</div>
                 <div class="score" id="team2-score">0</div>
             </div>
         </div>
 
-        <!-- Question Display -->
-        <div class="question-container">
-            <div class="question-label">SURVEY SAYS...</div>
-            <div class="question" id="question-text">Click "New Question" to start</div>
-        </div>
-
-        <!-- Player Answer Input -->
-        <div class="answer-input-container">
-            <div class="answer-input-label">Player Answer Check</div>
-            <div class="answer-input-wrapper">
-                <input type="text" id="player-answer-input" placeholder="Type player's answer here..." autocomplete="off">
-                <button class="control-btn btn-primary" id="check-answer-btn">Check Answer</button>
-            </div>
-            <div id="check-status" class="check-status"></div>
-        </div>
-
-        <!-- Answer Board -->
-        <div class="answers-container">
-            <div class="answer-row">
-                <div class="answer-slot" data-index="0">
-                    <div class="answer-number">1</div>
-                    <div class="answer-text" id="answer-0">?</div>
-                    <div class="answer-points" id="points-0"></div>
-                </div>
-                <div class="answer-slot" data-index="1">
-                    <div class="answer-number">2</div>
-                    <div class="answer-text" id="answer-1">?</div>
-                    <div class="answer-points" id="points-1"></div>
-                </div>
-            </div>
-            <div class="answer-row">
-                <div class="answer-slot" data-index="2">
-                    <div class="answer-number">3</div>
-                    <div class="answer-text" id="answer-2">?</div>
-                    <div class="answer-points" id="points-2"></div>
-                </div>
-                <div class="answer-slot" data-index="3">
-                    <div class="answer-number">4</div>
-                    <div class="answer-text" id="answer-3">?</div>
-                    <div class="answer-points" id="points-3"></div>
-                </div>
-            </div>
-            <div class="answer-row">
-                <div class="answer-slot" data-index="4">
-                    <div class="answer-number">5</div>
-                    <div class="answer-text" id="answer-4">?</div>
-                    <div class="answer-points" id="points-4"></div>
-                </div>
-                <div class="answer-slot" data-index="5">
-                    <div class="answer-number">6</div>
-                    <div class="answer-text" id="answer-5">?</div>
-                    <div class="answer-points" id="points-5"></div>
-                </div>
-            </div>
-        </div>
-
         <!-- Strikes Display -->
         <div class="strikes-container">
-            <div class="strikes-label">STRIKES</div>
+            <!-- <div class="strikes-label">STRIKES</div> -->
             <div class="strikes-display">
                 <div class="strike" id="strike-1">✗</div>
                 <div class="strike" id="strike-2">✗</div>
@@ -138,28 +80,122 @@
             </div>
         </div>
 
-        <!-- Host Controls -->
-        <div class="controls-container">
-            <button class="control-btn btn-primary" id="new-question-btn">New Question</button>
-            <button class="control-btn btn-secondary" id="reveal-answer-btn">Reveal Answer</button>
-            <button class="control-btn btn-secondary" id="add-strike-btn">Add Strike</button>
-            <button class="control-btn btn-secondary" id="remove-strike-btn">Remove Strike</button>
-            <button class="control-btn btn-success" id="add-points-btn">Add Points</button>
-            <button class="control-btn btn-warning" id="reset-round-btn">Reset Round</button>
-            <button class="control-btn btn-danger" id="reset-game-btn">Reset Game</button>
-            <button class="control-btn btn-end-game" id="end-game-btn">End Game</button>
+        <!-- Answer Board with Timer and Entry Log -->
+        <div class="game-board-wrapper">
+            <!-- Timer Panel (Left) -->
+            <div class="timer-panel">
+                <div class="timer-label">TIMER</div>
+                <div class="timer-display" id="timer-display">00:00</div>
+                <div class="timer-input-group">
+                    <label for="timer-seconds">Seconds:</label>
+                    <input type="number" id="timer-seconds" value="30" min="1" max="999">
+                </div>
+                <div class="timer-buttons">
+                    <button class="timer-btn timer-start" id="timer-start-btn">Start</button>
+                    <button class="timer-btn timer-pause" id="timer-pause-btn">Pause</button>
+                    <button class="timer-btn timer-reset" id="timer-reset-btn">Reset</button>
+                </div>
+            </div>
+
+            <!-- Answer Board (Center) -->
+            <div class="answers-container">
+                <div class="answer-row">
+                    <div class="answer-slot" data-index="0">
+                        <div class="answer-number">1</div>
+                        <div class="answer-text" id="answer-0">?</div>
+                        <div class="answer-points" id="points-0"></div>
+                    </div>
+                    <div class="answer-slot" data-index="1">
+                        <div class="answer-number">2</div>
+                        <div class="answer-text" id="answer-1">?</div>
+                        <div class="answer-points" id="points-1"></div>
+                    </div>
+                </div>
+                <div class="answer-row">
+                    <div class="answer-slot" data-index="2">
+                        <div class="answer-number">3</div>
+                        <div class="answer-text" id="answer-2">?</div>
+                        <div class="answer-points" id="points-2"></div>
+                    </div>
+                    <div class="answer-slot" data-index="3">
+                        <div class="answer-number">4</div>
+                        <div class="answer-text" id="answer-3">?</div>
+                        <div class="answer-points" id="points-3"></div>
+                    </div>
+                </div>
+                <div class="answer-row">
+                    <div class="answer-slot" data-index="4">
+                        <div class="answer-number">5</div>
+                        <div class="answer-text" id="answer-4">?</div>
+                        <div class="answer-points" id="points-4"></div>
+                    </div>
+                    <div class="answer-slot" data-index="5">
+                        <div class="answer-number">6</div>
+                        <div class="answer-text" id="answer-5">?</div>
+                        <div class="answer-points" id="points-5"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Entry Log (Right) -->
+            <div class="entry-log-panel">
+                <div class="entry-log-label">ENTRY LOG</div>
+                <div class="entry-log-list" id="entry-log-list">
+                    <div class="entry-log-empty">No entries yet</div>
+                </div>
+                <button class="entry-log-clear-btn" id="clear-log-btn">Clear Log</button>
+            </div>
         </div>
 
-        <!-- Points Input -->
-        <div class="points-input-container">
-            <label for="points-input">Points to Add:</label>
-            <input type="number" id="points-input" value="0" min="0">
-            <label for="team-select">Team:</label>
-            <select id="team-select">
-                <option value="1" id="team-select-option1">Team 1</option>
-                <option value="2" id="team-select-option2">Team 2</option>
-            </select>
+        <!-- Player Answer Panel (Hidden by default) -->
+        <div class="answer-panel" id="answer-panel" style="display: none;">
+            <div class="answer-input-container">
+                <div class="answer-input-label">Player Answer Check</div>
+                <div class="answer-input-wrapper">
+                    <input type="text" id="player-answer-input" placeholder="Type player's answer here..." autocomplete="off">
+                    <button class="control-btn btn-primary" id="check-answer-btn">Check Answer</button>
+                </div>
+                <div id="check-status" class="check-status"></div>
+            </div>
         </div>
+
+        <!-- Host Controls Panel (Hidden by default) -->
+        <div class="host-panel" id="host-panel" style="display: none;">
+            <!-- Host Controls -->
+            <div class="controls-container">
+                <button class="control-btn btn-primary" id="new-question-btn">New Question</button>
+                <button class="control-btn btn-secondary" id="reveal-answer-btn">Reveal Answer</button>
+                <button class="control-btn btn-secondary" id="add-strike-btn">Add Strike</button>
+                <button class="control-btn btn-secondary" id="remove-strike-btn">Remove Strike</button>
+                <button class="control-btn btn-success" id="add-points-btn">Add Points</button>
+                <button class="control-btn btn-warning" id="reset-round-btn">Reset Round</button>
+                <button class="control-btn btn-danger" id="reset-game-btn">Reset Game</button>
+                <button class="control-btn btn-end-game" id="end-game-btn">End Game</button>
+            </div>
+
+            <!-- Points Input -->
+            <div class="points-input-container">
+                <label for="points-input">Points to Add:</label>
+                <input type="number" id="points-input" value="0" min="0">
+                <label for="team-select">Team:</label>
+                <select id="team-select">
+                    <option value="1" id="team-select-option1">Team 1</option>
+                    <option value="2" id="team-select-option2">Team 2</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Host Controls Toggle Button (Bottom Left) -->
+        <button class="host-toggle-btn" id="host-toggle-btn" title="Toggle Host Controls">
+            <span class="toggle-icon">⚙</span>
+            <span class="toggle-text">Controls</span>
+        </button>
+
+        <!-- Answer Check Toggle Button (Bottom Right) -->
+        <button class="answer-toggle-btn" id="answer-toggle-btn" title="Toggle Answer Check">
+            <span class="toggle-icon">✎</span>
+            <span class="toggle-text">Answer</span>
+        </button>
     </div>
 
     <!-- End Game Screen -->
@@ -194,6 +230,12 @@
     <div id="feedback-overlay" class="feedback-overlay"></div>
     <canvas id="confetti-canvas"></canvas>
     <div id="big-strike" class="big-strike">✗</div>
+    <div id="times-up" class="times-up">TIME'S UP!</div>
+
+    <!-- Fullscreen Toggle Button -->
+    <button class="fullscreen-btn" id="fullscreen-btn" title="Toggle Fullscreen">
+        <span class="fullscreen-icon" id="fullscreen-icon">⛶</span>
+    </button>
 
     <script src="script.js"></script>
 </body>

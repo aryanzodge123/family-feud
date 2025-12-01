@@ -102,6 +102,7 @@ const checkStatus = document.getElementById('check-status');
 const feedbackOverlay = document.getElementById('feedback-overlay');
 const confettiCanvas = document.getElementById('confetti-canvas');
 const bigStrike = document.getElementById('big-strike');
+const timesUpDisplay = document.getElementById('times-up');
 const confettiCtx = confettiCanvas.getContext('2d');
 
 // Confetti Configuration
@@ -255,6 +256,24 @@ function showIncorrectFeedback() {
     }, 1100);
 }
 
+// Show Time's Up display
+function showTimesUp() {
+    // Show red overlay
+    feedbackOverlay.classList.add('incorrect');
+    
+    // Show Time's Up display
+    timesUpDisplay.classList.add('active');
+    
+    // Remove effects after 4 seconds
+    setTimeout(() => {
+        feedbackOverlay.classList.remove('incorrect');
+    }, 1000);
+    
+    setTimeout(() => {
+        timesUpDisplay.classList.remove('active');
+    }, 4000);
+}
+
 // Setup Screen Elements
 const setupScreen = document.getElementById('setup-screen');
 const gameContainer = document.getElementById('game-container');
@@ -290,6 +309,37 @@ const addPointsBtn = document.getElementById('add-points-btn');
 const resetRoundBtn = document.getElementById('reset-round-btn');
 const resetGameBtn = document.getElementById('reset-game-btn');
 const endGameBtn = document.getElementById('end-game-btn');
+
+// Host Panel Elements
+const hostPanel = document.getElementById('host-panel');
+const hostToggleBtn = document.getElementById('host-toggle-btn');
+
+// Answer Panel Elements
+const answerPanel = document.getElementById('answer-panel');
+const answerToggleBtn = document.getElementById('answer-toggle-btn');
+
+// Fullscreen Button
+const fullscreenBtn = document.getElementById('fullscreen-btn');
+const fullscreenIcon = document.getElementById('fullscreen-icon');
+
+// Timer Elements
+const timerDisplay = document.getElementById('timer-display');
+const timerSecondsInput = document.getElementById('timer-seconds');
+const timerStartBtn = document.getElementById('timer-start-btn');
+const timerPauseBtn = document.getElementById('timer-pause-btn');
+const timerResetBtn = document.getElementById('timer-reset-btn');
+
+// Timer State
+let timerInterval = null;
+let timerSeconds = 0;
+let timerRunning = false;
+
+// Entry Log Elements
+const entryLogList = document.getElementById('entry-log-list');
+const clearLogBtn = document.getElementById('clear-log-btn');
+
+// Entry Log State
+let entryLog = [];
 
 // Initialize
 async function init() {
@@ -329,6 +379,24 @@ async function init() {
     resetGameBtn.addEventListener('click', resetGame);
     endGameBtn.addEventListener('click', endGameEarly);
     checkAnswerBtn.addEventListener('click', checkPlayerAnswer);
+    
+    // Timer event listeners
+    timerStartBtn.addEventListener('click', startTimer);
+    timerPauseBtn.addEventListener('click', pauseTimer);
+    timerResetBtn.addEventListener('click', resetTimer);
+    
+    // Entry log event listener
+    clearLogBtn.addEventListener('click', clearEntryLog);
+    
+    // Host panel toggle event listener
+    hostToggleBtn.addEventListener('click', toggleHostPanel);
+    
+    // Answer panel toggle event listener
+    answerToggleBtn.addEventListener('click', toggleAnswerPanel);
+    
+    // Fullscreen toggle event listener
+    fullscreenBtn.addEventListener('click', toggleFullscreen);
+    document.addEventListener('fullscreenchange', updateFullscreenIcon);
     
     // Allow Enter key to submit answer
     playerAnswerInput.addEventListener('keypress', (e) => {
@@ -495,6 +563,172 @@ function playAgain() {
     setupScreen.style.display = 'flex';
 }
 
+// Timer Functions
+function startTimer() {
+    if (timerRunning) return;
+    
+    // Get seconds from input if timer is at 0
+    if (timerSeconds === 0) {
+        timerSeconds = parseInt(timerSecondsInput.value) || 30;
+    }
+    
+    timerRunning = true;
+    updateTimerDisplay();
+    
+    timerInterval = setInterval(() => {
+        timerSeconds--;
+        updateTimerDisplay();
+        
+        if (timerSeconds <= 0) {
+            pauseTimer();
+            timerDisplay.classList.remove('running', 'warning');
+            timerDisplay.classList.add('danger');
+            // Show Time's Up display
+            showTimesUp();
+        }
+    }, 1000);
+}
+
+function pauseTimer() {
+    timerRunning = false;
+    if (timerInterval) {
+        clearInterval(timerInterval);
+        timerInterval = null;
+    }
+    timerDisplay.classList.remove('running');
+}
+
+function resetTimer() {
+    pauseTimer();
+    timerSeconds = parseInt(timerSecondsInput.value) || 30;
+    timerDisplay.classList.remove('running', 'warning', 'danger');
+    updateTimerDisplay();
+}
+
+function updateTimerDisplay() {
+    const minutes = Math.floor(timerSeconds / 60);
+    const seconds = timerSeconds % 60;
+    timerDisplay.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    
+    // Update display color based on time remaining
+    timerDisplay.classList.remove('running', 'warning', 'danger');
+    
+    if (timerRunning) {
+        if (timerSeconds <= 5) {
+            timerDisplay.classList.add('danger');
+        } else if (timerSeconds <= 10) {
+            timerDisplay.classList.add('warning');
+        } else {
+            timerDisplay.classList.add('running');
+        }
+    }
+}
+
+// Entry Log Functions
+function addEntryToLog(entry, isCorrect) {
+    // Add to log array
+    entryLog.push({ entry, isCorrect, timestamp: new Date() });
+    
+    // Update display
+    renderEntryLog();
+}
+
+function renderEntryLog() {
+    if (entryLog.length === 0) {
+        entryLogList.innerHTML = '<div class="entry-log-empty">No entries yet</div>';
+        return;
+    }
+    
+    entryLogList.innerHTML = entryLog.map((item, index) => `
+        <div class="entry-log-item ${item.isCorrect ? 'correct' : 'incorrect'}">
+            <span class="entry-icon">${item.isCorrect ? '✓' : '✗'}</span>
+            <span class="entry-text">${escapeHtml(item.entry)}</span>
+        </div>
+    `).join('');
+    
+    // Scroll to bottom to show latest entry
+    entryLogList.scrollTop = entryLogList.scrollHeight;
+}
+
+function clearEntryLog() {
+    entryLog = [];
+    renderEntryLog();
+}
+
+// Helper function to escape HTML
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Toggle Host Panel
+function toggleHostPanel() {
+    const isVisible = hostPanel.style.display !== 'none';
+    
+    if (isVisible) {
+        // Hide host panel, show answer button
+        hostPanel.style.display = 'none';
+        hostToggleBtn.classList.remove('active');
+        answerToggleBtn.style.display = 'flex';
+    } else {
+        // Show host panel, hide answer button
+        hostPanel.style.display = 'block';
+        hostToggleBtn.classList.add('active');
+        answerToggleBtn.style.display = 'none';
+        // Also close answer panel if open
+        answerPanel.style.display = 'none';
+        answerToggleBtn.classList.remove('active');
+    }
+}
+
+// Toggle Answer Panel
+function toggleAnswerPanel() {
+    const isVisible = answerPanel.style.display !== 'none';
+    
+    if (isVisible) {
+        // Hide answer panel, show controls button
+        answerPanel.style.display = 'none';
+        answerToggleBtn.classList.remove('active');
+        hostToggleBtn.style.display = 'flex';
+    } else {
+        // Show answer panel, hide controls button
+        answerPanel.style.display = 'block';
+        answerToggleBtn.classList.add('active');
+        hostToggleBtn.style.display = 'none';
+        // Also close host panel if open
+        hostPanel.style.display = 'none';
+        hostToggleBtn.classList.remove('active');
+        
+        // Scroll to the answer panel
+        setTimeout(() => {
+            answerPanel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 100);
+    }
+}
+
+// Toggle Fullscreen
+function toggleFullscreen() {
+    if (!document.fullscreenElement) {
+        // Enter fullscreen
+        document.documentElement.requestFullscreen().catch(err => {
+            console.log('Error attempting to enable fullscreen:', err);
+        });
+    } else {
+        // Exit fullscreen
+        document.exitFullscreen();
+    }
+}
+
+// Update fullscreen icon based on state
+function updateFullscreenIcon() {
+    if (document.fullscreenElement) {
+        fullscreenIcon.textContent = '⛶'; // Exit fullscreen icon
+    } else {
+        fullscreenIcon.textContent = '⛶'; // Enter fullscreen icon
+    }
+}
+
 // Check player answer using ChatGPT via backend
 async function checkPlayerAnswer() {
     if (!currentQuestion) {
@@ -559,6 +793,9 @@ async function checkPlayerAnswer() {
                 // Show correct feedback (confetti + green overlay)
                 showCorrectFeedback();
                 
+                // Log the correct entry
+                addEntryToLog(playerAnswer, true);
+                
                 // Reveal the matching answer
                 revealAnswer(matchedIndex);
                 checkStatus.textContent = `Match! Revealed: "${matchedAnswerText}"`;
@@ -568,16 +805,22 @@ async function checkPlayerAnswer() {
                 const points = currentQuestion.answers[matchedIndex].points;
                 pointsInput.value = points;
             } else if (matchedIndex !== -1) {
+                // Already revealed - still log as correct but note it
+                addEntryToLog(playerAnswer, true);
                 checkStatus.textContent = `Match found, but "${matchedAnswerText}" is already revealed!`;
                 checkStatus.className = 'check-status match';
             } else {
                 // Match found but answer not on board (shouldn't happen, but handle it)
+                addEntryToLog(playerAnswer, false);
                 checkStatus.textContent = 'Match found but answer not on board';
                 checkStatus.className = 'check-status error';
             }
         } else {
             // Show incorrect feedback (big strike + red overlay)
             showIncorrectFeedback();
+            
+            // Log the incorrect entry
+            addEntryToLog(playerAnswer, false);
             
             // No match - add a strike
             addStrike();
@@ -670,10 +913,11 @@ function loadNewQuestion() {
     // Reset strikes
     updateStrikes();
     
-    // Clear answer input and status
+    // Clear answer input, status, and entry log
     playerAnswerInput.value = '';
     checkStatus.textContent = '';
     checkStatus.className = 'check-status';
+    clearEntryLog();
     
     // Sort answers by points (highest first) for display
     currentQuestion.answers.sort((a, b) => b.points - a.points);
@@ -799,10 +1043,11 @@ function resetRound() {
     
     updateStrikes();
     
-    // Clear answer input and status
+    // Clear answer input, status, and entry log
     playerAnswerInput.value = '';
     checkStatus.textContent = '';
     checkStatus.className = 'check-status';
+    clearEntryLog();
 }
 
 // Reset entire game
