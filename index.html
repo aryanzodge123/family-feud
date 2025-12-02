@@ -7,8 +7,27 @@
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+    <!-- Login Screen -->
+    <div id="login-screen" class="login-screen">
+        <div class="login-container">
+            <h1 class="login-logo">FAMILY FEUD</h1>
+            <p class="login-subtitle">Host Login</p>
+            
+            <div class="login-form">
+                <div class="login-input-group">
+                    <label class="login-label">Enter Password</label>
+                    <input type="password" id="password-input" placeholder="Enter host password..." autocomplete="off">
+                </div>
+                <div id="login-error" class="login-error"></div>
+                <button type="button" id="login-btn" class="login-btn">
+                    LOGIN
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Setup Screen -->
-    <div id="setup-screen" class="setup-screen">
+    <div id="setup-screen" class="setup-screen" style="display: none;">
         <div class="setup-container">
             <h1 class="setup-logo">FAMILY FEUD</h1>
             <p class="setup-subtitle">Game Setup</p>

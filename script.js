@@ -274,6 +274,15 @@ function showTimesUp() {
     }, 4000);
 }
 
+// Login Screen Elements
+const loginScreen = document.getElementById('login-screen');
+const passwordInput = document.getElementById('password-input');
+const loginBtn = document.getElementById('login-btn');
+const loginError = document.getElementById('login-error');
+
+// Host Password
+const HOST_PASSWORD = '654-SteveHarveyIsCool!-321';
+
 // Setup Screen Elements
 const setupScreen = document.getElementById('setup-screen');
 const gameContainer = document.getElementById('game-container');
@@ -346,6 +355,14 @@ async function init() {
     // Load questions from CSV first
     await loadQuestionsFromCSV();
     
+    // Login screen event listeners
+    loginBtn.addEventListener('click', handleLogin);
+    passwordInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            handleLogin();
+        }
+    });
+    
     // Setup screen event listeners
     setupRoundButtons();
     startGameBtn.addEventListener('click', startGame);
@@ -404,6 +421,25 @@ async function init() {
             checkPlayerAnswer();
         }
     });
+}
+
+// Handle Login
+function handleLogin() {
+    const enteredPassword = passwordInput.value;
+    
+    if (enteredPassword === HOST_PASSWORD) {
+        // Correct password - show setup screen
+        loginScreen.style.display = 'none';
+        setupScreen.style.display = 'flex';
+        loginError.classList.remove('show');
+        passwordInput.value = '';
+    } else {
+        // Wrong password - show error
+        loginError.textContent = 'Incorrect password. Please try again.';
+        loginError.classList.add('show');
+        passwordInput.value = '';
+        passwordInput.focus();
+    }
 }
 
 // Setup round selection buttons
