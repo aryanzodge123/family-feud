@@ -13,6 +13,7 @@ let team2Name = 'TEAM 2';
 let totalRounds = 7;
 let currentRound = 1;
 let usedQuestionIndices = []; // Track which questions have been used
+let roundPointsEarned = 0; // Track points earned from correct entries in current round
 
 // Load questions from CSV file
 async function loadQuestionsFromCSV() {
@@ -280,6 +281,16 @@ const passwordInput = document.getElementById('password-input');
 const loginBtn = document.getElementById('login-btn');
 const loginError = document.getElementById('login-error');
 
+// Tutorial Screen Elements
+const tutorialScreen = document.getElementById('tutorial-screen');
+const continueToSetupBtn = document.getElementById('continue-to-setup-btn');
+const videoDropdownToggle = document.getElementById('video-dropdown-toggle');
+const videoDropdownContent = document.getElementById('video-dropdown-content');
+const videoDropdownArrow = document.getElementById('video-dropdown-arrow');
+const tutorialVideoIframe = document.getElementById('tutorial-video-iframe');
+const backToTutorialBtn = document.getElementById('back-to-tutorial-btn');
+const helpBtn = document.getElementById('help-btn');
+
 // Host Password
 const HOST_PASSWORD = '654-SteveHarveyIsCool!-321';
 
@@ -363,6 +374,18 @@ async function init() {
         }
     });
     
+    // Tutorial screen event listener
+    continueToSetupBtn.addEventListener('click', handleContinueFromTutorial);
+    
+    // Video dropdown toggle
+    videoDropdownToggle.addEventListener('click', toggleVideoDropdown);
+    
+    // Back to tutorial button (setup screen)
+    backToTutorialBtn.addEventListener('click', goBackToTutorial);
+    
+    // Help button (global tutorial access)
+    helpBtn.addEventListener('click', openTutorialOverlay);
+    
     // Setup screen event listeners
     setupRoundButtons();
     startGameBtn.addEventListener('click', startGame);
@@ -428,9 +451,9 @@ function handleLogin() {
     const enteredPassword = passwordInput.value;
     
     if (enteredPassword === HOST_PASSWORD) {
-        // Correct password - show setup screen
+        // Correct password - show tutorial screen
         loginScreen.style.display = 'none';
-        setupScreen.style.display = 'flex';
+        tutorialScreen.style.display = 'flex';
         loginError.classList.remove('show');
         passwordInput.value = '';
     } else {
@@ -440,6 +463,104 @@ function handleLogin() {
         passwordInput.value = '';
         passwordInput.focus();
     }
+}
+
+// Toggle Video Dropdown
+function toggleVideoDropdown() {
+    const isOpen = videoDropdownContent.classList.contains('open');
+    
+    if (isOpen) {
+        // Close dropdown and stop video
+        videoDropdownContent.classList.remove('open');
+        videoDropdownArrow.classList.remove('open');
+        tutorialVideoIframe.src = ''; // Stop the video
+    } else {
+        // Open dropdown and load video
+        videoDropdownContent.classList.add('open');
+        videoDropdownArrow.classList.add('open');
+        tutorialVideoIframe.src = tutorialVideoIframe.dataset.src; // Load the video
+    }
+}
+
+// Continue to Setup from Tutorial
+function continueToSetup() {
+    // Close video dropdown and stop video if open
+    closeTutorialVideo();
+    tutorialScreen.style.display = 'none';
+    setupScreen.style.display = 'flex';
+}
+
+// Go back to Tutorial from Setup
+function goBackToTutorial() {
+    setupScreen.style.display = 'none';
+    tutorialScreen.style.display = 'flex';
+}
+
+// Open Tutorial Overlay (from anywhere)
+let previousScreen = null;
+
+function openTutorialOverlay() {
+    // Store which screen was visible before
+    if (loginScreen.style.display !== 'none' && loginScreen.style.display !== '') {
+        // Don't open tutorial from login screen
+        return;
+    }
+    
+    if (tutorialScreen.style.display === 'flex') {
+        // Already on tutorial, do nothing
+        return;
+    }
+    
+    // Determine which screen is currently visible
+    if (setupScreen.style.display === 'flex') {
+        previousScreen = 'setup';
+    } else if (gameContainer.style.display !== 'none' && gameContainer.style.display !== '') {
+        previousScreen = 'game';
+    } else if (endScreen.style.display === 'flex') {
+        previousScreen = 'end';
+    } else {
+        previousScreen = null;
+    }
+    
+    // Hide all screens
+    setupScreen.style.display = 'none';
+    gameContainer.style.display = 'none';
+    endScreen.style.display = 'none';
+    
+    // Show tutorial
+    tutorialScreen.style.display = 'flex';
+    
+    // Change continue button behavior to go back to previous screen
+    continueToSetupBtn.textContent = previousScreen ? 'BACK TO GAME' : 'LET\'S PLAY! 🎉';
+}
+
+// Close tutorial video helper
+function closeTutorialVideo() {
+    if (videoDropdownContent.classList.contains('open')) {
+        videoDropdownContent.classList.remove('open');
+        videoDropdownArrow.classList.remove('open');
+        tutorialVideoIframe.src = '';
+    }
+}
+
+// Modified continue function to handle returning to previous screen
+function handleContinueFromTutorial() {
+    closeTutorialVideo();
+    tutorialScreen.style.display = 'none';
+    
+    if (previousScreen === 'setup') {
+        setupScreen.style.display = 'flex';
+    } else if (previousScreen === 'game') {
+        gameContainer.style.display = 'block';
+    } else if (previousScreen === 'end') {
+        endScreen.style.display = 'flex';
+    } else {
+        setupScreen.style.display = 'flex';
+    }
+    
+    // Reset button text and previous screen tracker
+    continueToSetupBtn.textContent = 'LET\'S PLAY! 🎉';
+    previousScreen = null;
 }
 
 // Setup round selection buttons
@@ -837,9 +958,10 @@ async function checkPlayerAnswer() {
                 checkStatus.textContent = `Match! Revealed: "${matchedAnswerText}"`;
                 checkStatus.className = 'check-status match';
                 
-                // Add points automatically
+                // Add points to accumulated round total
                 const points = currentQuestion.answers[matchedIndex].points;
-                pointsInput.value = points;
+                roundPointsEarned += points;
+                pointsInput.value = roundPointsEarned;
             } else if (matchedIndex !== -1) {
                 // Already revealed - still log as correct but note it
                 addEntryToLog(playerAnswer, true);
@@ -927,6 +1049,7 @@ function loadNewQuestion() {
     revealedAnswers = [];
     strikes = 0;
     currentRevealIndex = 0;
+    roundPointsEarned = 0;
     
     // Update question display
     questionText.textContent = currentQuestion.question;
@@ -1064,6 +1187,8 @@ function resetRound() {
     revealedAnswers = [];
     strikes = 0;
     currentRevealIndex = 0;
+    roundPointsEarned = 0;
+    pointsInput.value = 0;
     
     // Hide all answers
     answerSlots.forEach((slot, index) => {

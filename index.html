@@ -26,6 +26,122 @@
         </div>
     </div>
 
+    <!-- Tutorial Screen -->
+    <div id="tutorial-screen" class="tutorial-screen" style="display: none;">
+        <div class="tutorial-container">
+            <h1 class="tutorial-logo">FAMILY FEUD</h1>
+            <p class="tutorial-subtitle">🎮 Host Guide 🎮</p>
+            
+            <!-- Video Dropdown Bar -->
+            <div class="video-dropdown">
+                <button class="video-dropdown-toggle" id="video-dropdown-toggle">
+                    <span class="video-dropdown-icon">🎬</span>
+                    <span class="video-dropdown-text">Watch an Example Game</span>
+                    <span class="video-dropdown-arrow" id="video-dropdown-arrow">▼</span>
+                </button>
+                <div class="video-dropdown-content" id="video-dropdown-content">
+                    <div class="tutorial-video-wrapper">
+                        <iframe 
+                            id="tutorial-video-iframe"
+                            src="" 
+                            data-src="https://www.youtube.com/embed/Jqx6a3eIn6M?start=54"
+                            title="Family Feud Example Game" 
+                            frameborder="0" 
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                            allowfullscreen>
+                        </iframe>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="tutorial-content">
+                <div class="tutorial-section">
+                    <h2 class="tutorial-heading">📋 The Questions</h2>
+                    <p class="tutorial-text">
+                        Here's the twist that makes Family Feud special — the answers aren't about being "right," they're about being <strong>popular!</strong> Every question is based on responses from a 100-person survey. Your contestants need to guess what <em>most people</em> said, not what's technically correct.
+                    </p>
+                    <p class="tutorial-text">
+                        That's where the iconic <strong>"SURVEY SAYS..."</strong> comes from! The top answers are hidden on the board, waiting to be revealed.
+                    </p>
+                </div>
+                
+                <div class="tutorial-section">
+                    <h2 class="tutorial-heading">🎯 Playing the Main Game</h2>
+                    <p class="tutorial-text">
+                        <strong>The Face-Off:</strong> Each round starts with one player from each team stepping up. Ask the question and see who shouts out a survey answer first! If they nail the #1 answer, their team takes control. If not, the other player gets a shot at a higher-ranked answer.
+                    </p>
+                    <p class="tutorial-text">
+                        <strong>Team Play:</strong> Once a team has control, they take turns guessing answers one by one. Here's the catch — <em>no helping each other!</em> Each family member is on their own. Wrong answer? That's a <span class="tutorial-strike">❌ STRIKE!</span>
+                    </p>
+                    <p class="tutorial-text">
+                        <strong>Three Strikes:</strong> If a team gets 3 strikes, the other team swoops in for a steal! They get ONE chance to guess a remaining answer. Nail it? They take ALL the points. Miss it? The original team keeps the points.
+                    </p>
+                </div>
+
+                <div class="tutorial-section">
+                    <h2 class="tutorial-heading">🕹️ Host Controls</h2>
+                    <p class="tutorial-text">
+                        Click the <span class="tutorial-key">⚙ Controls</span> button (bottom-left) to reveal your hosting powers:
+                    </p>
+                    <ul class="tutorial-list">
+                        <li><strong>New Question</strong> — Load up a fresh question for the next round</li>
+                        <li><strong>Reveal Answer</strong> — Flip over answers one by one (in order)</li>
+                        <li><strong>Add/Remove Strike</strong> — Track those wrong guesses</li>
+                        <li><strong>Add Points</strong> — Award points to the winning team</li>
+                        <li><strong>Reset Round</strong> — Start the current round over</li>
+                        <li><strong>End Game</strong> — Finish up and see the final scores</li>
+                    </ul>
+                </div>
+
+                <div class="tutorial-section">
+                    <h2 class="tutorial-heading">✎ Smart Answer Checker</h2>
+                    <p class="tutorial-text">
+                        Click the <span class="tutorial-key">✎ Answer</span> button (bottom-right) to open the AI-powered answer checker! Type in what a contestant said, and the system will automatically determine if it matches any answer on the board.
+                    </p>
+                    <p class="tutorial-text">
+                        <span class="tutorial-correct">✓ Correct answers</span> trigger confetti and reveal on the board!<br>
+                        <span class="tutorial-wrong">✗ Wrong answers</span> add a strike automatically.
+                    </p>
+                    <p class="tutorial-text">
+                        All guesses appear in the <strong>Entry Log</strong> on the right side of the board so everyone can see what's been tried!
+                    </p>
+                </div>
+
+                <div class="tutorial-section">
+                    <h2 class="tutorial-heading">⏱️ Timer</h2>
+                    <p class="tutorial-text">
+                        Use the timer on the left side of the board to keep the pressure on! Set how many seconds contestants get, then hit <strong>Start</strong>. When time runs out, a big <strong>"TIME'S UP!"</strong> will appear. Perfect for fast-paced rounds!
+                    </p>
+                </div>
+
+                <div class="tutorial-section">
+                    <h2 class="tutorial-heading">⌨️ Keyboard Shortcuts</h2>
+                    <p class="tutorial-text">
+                        Pro hosts use these quick keys:
+                    </p>
+                    <div class="tutorial-shortcuts">
+                        <span class="shortcut"><kbd>N</kbd> New Question</span>
+                        <span class="shortcut"><kbd>R</kbd> Reveal Answer</span>
+                        <span class="shortcut"><kbd>S</kbd> Add Strike</span>
+                        <span class="shortcut"><kbd>A</kbd> Add Points</span>
+                        <span class="shortcut"><kbd>ESC</kbd> Reset Round</span>
+                    </div>
+                </div>
+
+                <div class="tutorial-section tutorial-tip">
+                    <h2 class="tutorial-heading">💡 Pro Tip</h2>
+                    <p class="tutorial-text">
+                        The points from correct answers are automatically tallied in the Points input box! You can still adjust the value before awarding points to a team. Use the <span class="tutorial-key">⛶</span> button to go fullscreen for the best experience!
+                    </p>
+                </div>
+            </div>
+            
+            <button type="button" id="continue-to-setup-btn" class="continue-btn">
+                LET'S PLAY! 🎉
+            </button>
+        </div>
+    </div>
+
     <!-- Setup Screen -->
     <div id="setup-screen" class="setup-screen" style="display: none;">
         <div class="setup-container">
@@ -60,9 +176,14 @@
                     </div>
                 </div>
                 
-                <button type="button" id="start-game-btn" class="start-game-btn">
-                    START GAME
-                </button>
+                <div class="setup-buttons">
+                    <button type="button" id="back-to-tutorial-btn" class="back-btn">
+                        ← Back to Tutorial
+                    </button>
+                    <button type="button" id="start-game-btn" class="start-game-btn">
+                        START GAME
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -256,7 +377,11 @@
         <span class="fullscreen-icon" id="fullscreen-icon">⛶</span>
     </button>
 
+    <!-- Help/Tutorial Button -->
+    <button class="help-btn" id="help-btn" title="How to Play">
+        <span class="help-icon">?</span>
+    </button>
+
     <script src="script.js"></script>
 </body>
 </html>
-
