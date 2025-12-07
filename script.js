@@ -446,9 +446,9 @@ async function init() {
     mobileTimerPauseBtn.addEventListener('click', pauseTimer);
     mobileTimerResetBtn.addEventListener('click', resetTimer);
     
-    // Sync timer inputs between desktop and mobile
-    timerSecondsInput.addEventListener('change', syncTimerInputs);
-    mobileTimerSecondsInput.addEventListener('change', syncTimerInputs);
+    // Sync timer inputs between desktop and mobile (use 'input' for real-time sync)
+    timerSecondsInput.addEventListener('input', syncTimerInputs);
+    mobileTimerSecondsInput.addEventListener('input', syncTimerInputs);
     
     // Entry log event listener
     clearLogBtn.addEventListener('click', clearEntryLog);
