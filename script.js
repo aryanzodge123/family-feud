@@ -479,11 +479,19 @@ async function init() {
     });
 }
 
-// Handle orientation change - reset mobile panels in landscape
+// Handle orientation change - reset all panels in landscape
 function handleOrientationChange() {
     const isLandscape = window.matchMedia('(orientation: landscape)').matches;
     
     if (isLandscape) {
+        // Close host panel when switching to landscape
+        hostPanel.style.display = 'none';
+        hostToggleBtn.classList.remove('active');
+        
+        // Close answer panel when switching to landscape
+        answerPanel.style.display = 'none';
+        answerToggleBtn.classList.remove('active');
+        
         // Close mobile timer panel when switching to landscape
         mobileTimerPanel.classList.remove('visible');
         mobileTimerPanel.style.display = 'none';
@@ -924,8 +932,9 @@ function renderEntryLog() {
     entryLogList.innerHTML = logHTML;
     mobileEntryLogList.innerHTML = logHTML;
     
-    // Scroll to bottom to show latest entry
+    // Scroll both lists to bottom to show latest entry
     entryLogList.scrollTop = entryLogList.scrollHeight;
+    mobileEntryLogList.scrollTop = mobileEntryLogList.scrollHeight;
 }
 
 function clearEntryLog() {
