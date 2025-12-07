@@ -349,6 +349,15 @@ const timerStartBtn = document.getElementById('timer-start-btn');
 const timerPauseBtn = document.getElementById('timer-pause-btn');
 const timerResetBtn = document.getElementById('timer-reset-btn');
 
+// Mobile Timer Elements
+const timerToggleBtn = document.getElementById('timer-toggle-btn');
+const mobileTimerPanel = document.getElementById('mobile-timer-panel');
+const mobileTimerDisplay = document.getElementById('mobile-timer-display');
+const mobileTimerSecondsInput = document.getElementById('mobile-timer-seconds');
+const mobileTimerStartBtn = document.getElementById('mobile-timer-start-btn');
+const mobileTimerPauseBtn = document.getElementById('mobile-timer-pause-btn');
+const mobileTimerResetBtn = document.getElementById('mobile-timer-reset-btn');
+
 // Timer State
 let timerInterval = null;
 let timerSeconds = 0;
@@ -357,6 +366,12 @@ let timerRunning = false;
 // Entry Log Elements
 const entryLogList = document.getElementById('entry-log-list');
 const clearLogBtn = document.getElementById('clear-log-btn');
+
+// Mobile Entry Log Elements
+const entryLogToggleBtn = document.getElementById('entry-log-toggle-btn');
+const mobileEntryLogPanel = document.getElementById('mobile-entry-log-panel');
+const mobileEntryLogList = document.getElementById('mobile-entry-log-list');
+const mobileClearLogBtn = document.getElementById('mobile-clear-log-btn');
 
 // Entry Log State
 let entryLog = [];
@@ -425,6 +440,16 @@ async function init() {
     timerPauseBtn.addEventListener('click', pauseTimer);
     timerResetBtn.addEventListener('click', resetTimer);
     
+    // Mobile timer event listeners
+    timerToggleBtn.addEventListener('click', toggleTimerPanel);
+    mobileTimerStartBtn.addEventListener('click', startTimer);
+    mobileTimerPauseBtn.addEventListener('click', pauseTimer);
+    mobileTimerResetBtn.addEventListener('click', resetTimer);
+    
+    // Sync timer inputs between desktop and mobile
+    timerSecondsInput.addEventListener('change', syncTimerInputs);
+    mobileTimerSecondsInput.addEventListener('change', syncTimerInputs);
+    
     // Entry log event listener
     clearLogBtn.addEventListener('click', clearEntryLog);
     
@@ -434,9 +459,17 @@ async function init() {
     // Answer panel toggle event listener
     answerToggleBtn.addEventListener('click', toggleAnswerPanel);
     
+    // Entry log panel toggle event listener
+    entryLogToggleBtn.addEventListener('click', toggleEntryLogPanel);
+    mobileClearLogBtn.addEventListener('click', clearEntryLog);
+    
     // Fullscreen toggle event listener
     fullscreenBtn.addEventListener('click', toggleFullscreen);
     document.addEventListener('fullscreenchange', updateFullscreenIcon);
+    
+    // Handle orientation changes (for mobile timer toggle)
+    window.addEventListener('orientationchange', handleOrientationChange);
+    window.matchMedia('(orientation: landscape)').addEventListener('change', handleOrientationChange);
     
     // Allow Enter key to submit answer
     playerAnswerInput.addEventListener('keypress', (e) => {
@@ -444,6 +477,29 @@ async function init() {
             checkPlayerAnswer();
         }
     });
+}
+
+// Handle orientation change - reset mobile panels in landscape
+function handleOrientationChange() {
+    const isLandscape = window.matchMedia('(orientation: landscape)').matches;
+    
+    if (isLandscape) {
+        // Close mobile timer panel when switching to landscape
+        mobileTimerPanel.classList.remove('visible');
+        mobileTimerPanel.style.display = 'none';
+        timerToggleBtn.classList.remove('active');
+        
+        // Close mobile entry log panel when switching to landscape
+        mobileEntryLogPanel.classList.remove('visible');
+        mobileEntryLogPanel.style.display = 'none';
+        entryLogToggleBtn.classList.remove('active');
+        
+        // Show all toggle buttons (they'll be hidden by CSS in landscape anyway)
+        hostToggleBtn.style.display = 'flex';
+        timerToggleBtn.style.display = 'flex';
+        entryLogToggleBtn.style.display = 'flex';
+        answerToggleBtn.style.display = 'flex';
+    }
 }
 
 // Handle Login
@@ -724,9 +780,12 @@ function playAgain() {
 function startTimer() {
     if (timerRunning) return;
     
-    // Get seconds from input if timer is at 0
+    // Get seconds from input if timer is at 0 (check both inputs)
     if (timerSeconds === 0) {
-        timerSeconds = parseInt(timerSecondsInput.value) || 30;
+        const desktopValue = parseInt(timerSecondsInput.value) || 30;
+        const mobileValue = parseInt(mobileTimerSecondsInput.value) || 30;
+        // Use whichever was most recently changed (they should be synced)
+        timerSeconds = mobileValue || desktopValue;
     }
     
     timerRunning = true;
@@ -740,6 +799,8 @@ function startTimer() {
             pauseTimer();
             timerDisplay.classList.remove('running', 'warning');
             timerDisplay.classList.add('danger');
+            mobileTimerDisplay.classList.remove('running', 'warning');
+            mobileTimerDisplay.classList.add('danger');
             // Show Time's Up display
             showTimesUp();
         }
@@ -753,31 +814,90 @@ function pauseTimer() {
         timerInterval = null;
     }
     timerDisplay.classList.remove('running');
+    mobileTimerDisplay.classList.remove('running');
 }
 
 function resetTimer() {
     pauseTimer();
-    timerSeconds = parseInt(timerSecondsInput.value) || 30;
+    // Get value from whichever input is visible/in use
+    const desktopValue = parseInt(timerSecondsInput.value) || 30;
+    const mobileValue = parseInt(mobileTimerSecondsInput.value) || 30;
+    timerSeconds = mobileValue || desktopValue;
+    
     timerDisplay.classList.remove('running', 'warning', 'danger');
+    mobileTimerDisplay.classList.remove('running', 'warning', 'danger');
     updateTimerDisplay();
 }
 
 function updateTimerDisplay() {
     const minutes = Math.floor(timerSeconds / 60);
     const seconds = timerSeconds % 60;
-    timerDisplay.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    const timeText = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    
+    // Update both displays
+    timerDisplay.textContent = timeText;
+    mobileTimerDisplay.textContent = timeText;
     
     // Update display color based on time remaining
     timerDisplay.classList.remove('running', 'warning', 'danger');
+    mobileTimerDisplay.classList.remove('running', 'warning', 'danger');
     
     if (timerRunning) {
         if (timerSeconds <= 5) {
             timerDisplay.classList.add('danger');
+            mobileTimerDisplay.classList.add('danger');
         } else if (timerSeconds <= 10) {
             timerDisplay.classList.add('warning');
+            mobileTimerDisplay.classList.add('warning');
         } else {
             timerDisplay.classList.add('running');
+            mobileTimerDisplay.classList.add('running');
         }
+    }
+}
+
+// Sync timer inputs between desktop and mobile
+function syncTimerInputs(e) {
+    const value = e.target.value;
+    timerSecondsInput.value = value;
+    mobileTimerSecondsInput.value = value;
+}
+
+// Toggle Timer Panel (Mobile)
+function toggleTimerPanel() {
+    const isVisible = mobileTimerPanel.classList.contains('visible');
+    
+    if (isVisible) {
+        // Hide timer panel, show other buttons
+        mobileTimerPanel.classList.remove('visible');
+        mobileTimerPanel.style.display = 'none';
+        timerToggleBtn.classList.remove('active');
+        hostToggleBtn.style.display = 'flex';
+        entryLogToggleBtn.style.display = 'flex';
+        answerToggleBtn.style.display = 'flex';
+    } else {
+        // Show timer panel, hide other buttons
+        mobileTimerPanel.classList.add('visible');
+        mobileTimerPanel.style.display = 'block';
+        timerToggleBtn.classList.add('active');
+        hostToggleBtn.style.display = 'none';
+        entryLogToggleBtn.style.display = 'none';
+        answerToggleBtn.style.display = 'none';
+        
+        // Also close other panels if open
+        hostPanel.style.display = 'none';
+        hostToggleBtn.classList.remove('active');
+        answerPanel.style.display = 'none';
+        answerToggleBtn.classList.remove('active');
+        mobileEntryLogPanel.classList.remove('visible');
+        mobileEntryLogPanel.style.display = 'none';
+        entryLogToggleBtn.classList.remove('active');
+        
+        // Sync the mobile input with current timer state
+        mobileTimerSecondsInput.value = timerSecondsInput.value;
+        
+        // Update the display to show current time
+        updateTimerDisplay();
     }
 }
 
@@ -791,17 +911,18 @@ function addEntryToLog(entry, isCorrect) {
 }
 
 function renderEntryLog() {
-    if (entryLog.length === 0) {
-        entryLogList.innerHTML = '<div class="entry-log-empty">No entries yet</div>';
-        return;
-    }
+    const logHTML = entryLog.length === 0 
+        ? '<div class="entry-log-empty">No entries yet</div>'
+        : entryLog.map((item, index) => `
+            <div class="entry-log-item ${item.isCorrect ? 'correct' : 'incorrect'}">
+                <span class="entry-icon">${item.isCorrect ? '✓' : '✗'}</span>
+                <span class="entry-text">${escapeHtml(item.entry)}</span>
+            </div>
+        `).join('');
     
-    entryLogList.innerHTML = entryLog.map((item, index) => `
-        <div class="entry-log-item ${item.isCorrect ? 'correct' : 'incorrect'}">
-            <span class="entry-icon">${item.isCorrect ? '✓' : '✗'}</span>
-            <span class="entry-text">${escapeHtml(item.entry)}</span>
-        </div>
-    `).join('');
+    // Update both desktop and mobile entry log lists
+    entryLogList.innerHTML = logHTML;
+    mobileEntryLogList.innerHTML = logHTML;
     
     // Scroll to bottom to show latest entry
     entryLogList.scrollTop = entryLogList.scrollHeight;
@@ -824,18 +945,29 @@ function toggleHostPanel() {
     const isVisible = hostPanel.style.display !== 'none';
     
     if (isVisible) {
-        // Hide host panel, show answer button
+        // Hide host panel, show other buttons
         hostPanel.style.display = 'none';
         hostToggleBtn.classList.remove('active');
+        timerToggleBtn.style.display = 'flex';
+        entryLogToggleBtn.style.display = 'flex';
         answerToggleBtn.style.display = 'flex';
     } else {
-        // Show host panel, hide answer button
+        // Show host panel, hide other buttons
         hostPanel.style.display = 'block';
         hostToggleBtn.classList.add('active');
+        timerToggleBtn.style.display = 'none';
+        entryLogToggleBtn.style.display = 'none';
         answerToggleBtn.style.display = 'none';
-        // Also close answer panel if open
+        
+        // Also close other panels if open
         answerPanel.style.display = 'none';
         answerToggleBtn.classList.remove('active');
+        mobileTimerPanel.classList.remove('visible');
+        mobileTimerPanel.style.display = 'none';
+        timerToggleBtn.classList.remove('active');
+        mobileEntryLogPanel.classList.remove('visible');
+        mobileEntryLogPanel.style.display = 'none';
+        entryLogToggleBtn.classList.remove('active');
     }
 }
 
@@ -844,23 +976,69 @@ function toggleAnswerPanel() {
     const isVisible = answerPanel.style.display !== 'none';
     
     if (isVisible) {
-        // Hide answer panel, show controls button
+        // Hide answer panel, show other buttons
         answerPanel.style.display = 'none';
         answerToggleBtn.classList.remove('active');
         hostToggleBtn.style.display = 'flex';
+        timerToggleBtn.style.display = 'flex';
+        entryLogToggleBtn.style.display = 'flex';
     } else {
-        // Show answer panel, hide controls button
+        // Show answer panel, hide other buttons
         answerPanel.style.display = 'block';
         answerToggleBtn.classList.add('active');
         hostToggleBtn.style.display = 'none';
-        // Also close host panel if open
+        timerToggleBtn.style.display = 'none';
+        entryLogToggleBtn.style.display = 'none';
+        
+        // Also close other panels if open
         hostPanel.style.display = 'none';
         hostToggleBtn.classList.remove('active');
+        mobileTimerPanel.classList.remove('visible');
+        mobileTimerPanel.style.display = 'none';
+        timerToggleBtn.classList.remove('active');
+        mobileEntryLogPanel.classList.remove('visible');
+        mobileEntryLogPanel.style.display = 'none';
+        entryLogToggleBtn.classList.remove('active');
         
         // Scroll to the answer panel
         setTimeout(() => {
             answerPanel.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }, 100);
+    }
+}
+
+// Toggle Entry Log Panel (Mobile)
+function toggleEntryLogPanel() {
+    const isVisible = mobileEntryLogPanel.classList.contains('visible');
+    
+    if (isVisible) {
+        // Hide entry log panel, show other buttons
+        mobileEntryLogPanel.classList.remove('visible');
+        mobileEntryLogPanel.style.display = 'none';
+        entryLogToggleBtn.classList.remove('active');
+        hostToggleBtn.style.display = 'flex';
+        timerToggleBtn.style.display = 'flex';
+        answerToggleBtn.style.display = 'flex';
+    } else {
+        // Show entry log panel, hide other buttons
+        mobileEntryLogPanel.classList.add('visible');
+        mobileEntryLogPanel.style.display = 'block';
+        entryLogToggleBtn.classList.add('active');
+        hostToggleBtn.style.display = 'none';
+        timerToggleBtn.style.display = 'none';
+        answerToggleBtn.style.display = 'none';
+        
+        // Also close other panels if open
+        hostPanel.style.display = 'none';
+        hostToggleBtn.classList.remove('active');
+        answerPanel.style.display = 'none';
+        answerToggleBtn.classList.remove('active');
+        mobileTimerPanel.classList.remove('visible');
+        mobileTimerPanel.style.display = 'none';
+        timerToggleBtn.classList.remove('active');
+        
+        // Update the entry log display
+        renderEntryLog();
     }
 }
 

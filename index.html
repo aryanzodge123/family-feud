@@ -331,6 +331,45 @@
             <span class="toggle-text">Controls</span>
         </button>
 
+        <!-- Timer Toggle Button (Mobile Only - Next to Controls) -->
+        <button class="timer-toggle-btn" id="timer-toggle-btn" title="Toggle Timer">
+            <span class="toggle-icon">⏱</span>
+            <span class="toggle-text">Timer</span>
+        </button>
+
+        <!-- Mobile Timer Panel (Hidden by default) -->
+        <div class="mobile-timer-panel" id="mobile-timer-panel" style="display: none;">
+            <div class="mobile-timer-content">
+                <div class="mobile-timer-display" id="mobile-timer-display">00:00</div>
+                <div class="mobile-timer-input-group">
+                    <label for="mobile-timer-seconds">Seconds:</label>
+                    <input type="number" id="mobile-timer-seconds" value="30" min="1" max="999">
+                </div>
+                <div class="mobile-timer-buttons">
+                    <button class="timer-btn timer-start" id="mobile-timer-start-btn">Start</button>
+                    <button class="timer-btn timer-pause" id="mobile-timer-pause-btn">Pause</button>
+                    <button class="timer-btn timer-reset" id="mobile-timer-reset-btn">Reset</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Entry Log Toggle Button (Mobile Only - Left of Answer) -->
+        <button class="entry-log-toggle-btn" id="entry-log-toggle-btn" title="Toggle Entry Log">
+            <span class="toggle-icon">📋</span>
+            <span class="toggle-text">Log</span>
+        </button>
+
+        <!-- Mobile Entry Log Panel (Hidden by default) -->
+        <div class="mobile-entry-log-panel" id="mobile-entry-log-panel" style="display: none;">
+            <div class="mobile-entry-log-content">
+                <div class="mobile-entry-log-label">ENTRY LOG</div>
+                <div class="mobile-entry-log-list" id="mobile-entry-log-list">
+                    <div class="entry-log-empty">No entries yet</div>
+                </div>
+                <button class="entry-log-clear-btn" id="mobile-clear-log-btn">Clear Log</button>
+            </div>
+        </div>
+
         <!-- Answer Check Toggle Button (Bottom Right) -->
         <button class="answer-toggle-btn" id="answer-toggle-btn" title="Toggle Answer Check">
             <span class="toggle-icon">✎</span>
