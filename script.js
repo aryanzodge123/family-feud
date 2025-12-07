@@ -808,12 +808,9 @@ function playAgain() {
 function startTimer() {
     if (timerRunning) return;
     
-    // Get seconds from input if timer is at 0 (check both inputs)
+    // Get seconds from input if timer is at 0 (inputs are synced, use desktop as source)
     if (timerSeconds === 0) {
-        const desktopValue = parseInt(timerSecondsInput.value) || 30;
-        const mobileValue = parseInt(mobileTimerSecondsInput.value) || 30;
-        // Use whichever was most recently changed (they should be synced)
-        timerSeconds = mobileValue || desktopValue;
+        timerSeconds = parseInt(timerSecondsInput.value) || 30;
     }
     
     timerRunning = true;
@@ -847,10 +844,8 @@ function pauseTimer() {
 
 function resetTimer() {
     pauseTimer();
-    // Get value from whichever input is visible/in use
-    const desktopValue = parseInt(timerSecondsInput.value) || 30;
-    const mobileValue = parseInt(mobileTimerSecondsInput.value) || 30;
-    timerSeconds = mobileValue || desktopValue;
+    // Get value from timer input (inputs are synced, use desktop as source)
+    timerSeconds = parseInt(timerSecondsInput.value) || 30;
     
     timerDisplay.classList.remove('running', 'warning', 'danger');
     mobileTimerDisplay.classList.remove('running', 'warning', 'danger');
