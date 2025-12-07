@@ -479,6 +479,29 @@ async function init() {
     });
 }
 
+// Check if we're on mobile portrait (where timer/entry log toggle buttons should be visible)
+function isMobilePortrait() {
+    const isPortrait = window.matchMedia('(orientation: portrait)').matches;
+    const isMobileWidth = window.matchMedia('(max-width: 768px)').matches;
+    return isPortrait && isMobileWidth;
+}
+
+// Show timer and entry log toggle buttons only on mobile portrait
+function showMobileToggleButtons() {
+    hostToggleBtn.style.display = 'flex';
+    answerToggleBtn.style.display = 'flex';
+    
+    // Only show timer/entry log toggle buttons on mobile portrait
+    if (isMobilePortrait()) {
+        timerToggleBtn.style.display = 'flex';
+        entryLogToggleBtn.style.display = 'flex';
+    } else {
+        // On desktop or landscape, keep them hidden (CSS default)
+        timerToggleBtn.style.display = '';
+        entryLogToggleBtn.style.display = '';
+    }
+}
+
 // Handle orientation change - reset all panels in landscape
 function handleOrientationChange() {
     const isLandscape = window.matchMedia('(orientation: landscape)').matches;
@@ -501,13 +524,10 @@ function handleOrientationChange() {
         mobileEntryLogPanel.classList.remove('visible');
         mobileEntryLogPanel.style.display = 'none';
         entryLogToggleBtn.classList.remove('active');
-        
-        // Show all toggle buttons (they'll be hidden by CSS in landscape anyway)
-        hostToggleBtn.style.display = 'flex';
-        timerToggleBtn.style.display = 'flex';
-        entryLogToggleBtn.style.display = 'flex';
-        answerToggleBtn.style.display = 'flex';
     }
+    
+    // Show appropriate toggle buttons based on screen size/orientation
+    showMobileToggleButtons();
 }
 
 // Handle Login
@@ -880,9 +900,7 @@ function toggleTimerPanel() {
         mobileTimerPanel.classList.remove('visible');
         mobileTimerPanel.style.display = 'none';
         timerToggleBtn.classList.remove('active');
-        hostToggleBtn.style.display = 'flex';
-        entryLogToggleBtn.style.display = 'flex';
-        answerToggleBtn.style.display = 'flex';
+        showMobileToggleButtons();
     } else {
         // Show timer panel, hide other buttons
         mobileTimerPanel.classList.add('visible');
@@ -957,9 +975,7 @@ function toggleHostPanel() {
         // Hide host panel, show other buttons
         hostPanel.style.display = 'none';
         hostToggleBtn.classList.remove('active');
-        timerToggleBtn.style.display = 'flex';
-        entryLogToggleBtn.style.display = 'flex';
-        answerToggleBtn.style.display = 'flex';
+        showMobileToggleButtons();
     } else {
         // Show host panel, hide other buttons
         hostPanel.style.display = 'block';
@@ -988,9 +1004,7 @@ function toggleAnswerPanel() {
         // Hide answer panel, show other buttons
         answerPanel.style.display = 'none';
         answerToggleBtn.classList.remove('active');
-        hostToggleBtn.style.display = 'flex';
-        timerToggleBtn.style.display = 'flex';
-        entryLogToggleBtn.style.display = 'flex';
+        showMobileToggleButtons();
     } else {
         // Show answer panel, hide other buttons
         answerPanel.style.display = 'block';
@@ -1025,9 +1039,7 @@ function toggleEntryLogPanel() {
         mobileEntryLogPanel.classList.remove('visible');
         mobileEntryLogPanel.style.display = 'none';
         entryLogToggleBtn.classList.remove('active');
-        hostToggleBtn.style.display = 'flex';
-        timerToggleBtn.style.display = 'flex';
-        answerToggleBtn.style.display = 'flex';
+        showMobileToggleButtons();
     } else {
         // Show entry log panel, hide other buttons
         mobileEntryLogPanel.classList.add('visible');
