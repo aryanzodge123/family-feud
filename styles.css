@@ -11,6 +11,7 @@ body {
     min-height: 100vh;
     padding: 20px;
     overflow-x: hidden;
+    overflow-y: auto;
 }
 
 .container {
@@ -911,9 +912,11 @@ body {
     margin-bottom: 0;
 }
 
-/* Toggle Buttons Base */
+/* Toggle Buttons Base - All buttons same size */
 .host-toggle-btn,
-.answer-toggle-btn {
+.answer-toggle-btn,
+.timer-toggle-btn,
+.entry-log-toggle-btn {
     position: fixed;
     bottom: 20px;
     width: 85px;
@@ -921,12 +924,44 @@ body {
     border-radius: 50%;
     color: #fff;
     cursor: pointer;
-    display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     transition: all 0.3s ease;
     z-index: 999;
+}
+
+/* Host and Answer visible on all screens */
+.host-toggle-btn,
+.answer-toggle-btn {
+    display: flex;
+}
+
+/* Timer and Entry Log toggle buttons hidden on desktop */
+.timer-toggle-btn,
+.entry-log-toggle-btn {
+    display: none;
+}
+
+/* All toggle button icons same size */
+.host-toggle-btn .toggle-icon,
+.answer-toggle-btn .toggle-icon,
+.timer-toggle-btn .toggle-icon,
+.entry-log-toggle-btn .toggle-icon {
+    font-size: 2.5rem;
+    line-height: 1;
+}
+
+/* All toggle button text same size */
+.host-toggle-btn .toggle-text,
+.answer-toggle-btn .toggle-text,
+.timer-toggle-btn .toggle-text,
+.entry-log-toggle-btn .toggle-text {
+    font-size: 0.6rem;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-top: 4px;
 }
 
 /* Host Toggle Button (Bottom Left) */
@@ -946,7 +981,7 @@ body {
     background: linear-gradient(135deg, #27ae60 0%, #229954 100%);
     border-color: #2ecc71;
     box-shadow: 0 4px 15px rgba(39, 174, 96, 0.4);
-    bottom: 140px;
+    bottom: 155px; /* Above host panel with gap */
 }
 
 .host-toggle-btn.active:hover {
@@ -974,6 +1009,200 @@ body {
 
 .answer-toggle-btn.active:hover {
     box-shadow: 0 6px 20px rgba(39, 174, 96, 0.6);
+}
+
+/* Timer Toggle Button Styling */
+.timer-toggle-btn {
+    left: 115px;
+    background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%);
+    border: 3px solid #f5b041;
+    box-shadow: 0 4px 15px rgba(243, 156, 18, 0.4);
+}
+
+.timer-toggle-btn:hover {
+    transform: scale(1.1);
+    box-shadow: 0 6px 20px rgba(243, 156, 18, 0.6);
+}
+
+.timer-toggle-btn.active {
+    background: linear-gradient(135deg, #27ae60 0%, #229954 100%);
+    border-color: #2ecc71;
+    box-shadow: 0 4px 15px rgba(39, 174, 96, 0.4);
+}
+
+.timer-toggle-btn.active:hover {
+    box-shadow: 0 6px 20px rgba(39, 174, 96, 0.6);
+}
+
+/* Mobile Timer Panel (Hidden on Desktop) */
+.mobile-timer-panel {
+    display: none;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    padding: 15px 20px;
+    border-top: 3px solid #f39c12;
+    box-shadow: 0 -5px 20px rgba(0, 0, 0, 0.4);
+    z-index: 998;
+    animation: panelSlideUp 0.3s ease;
+}
+
+.mobile-timer-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+}
+
+.mobile-timer-display {
+    font-size: 3rem;
+    font-weight: 900;
+    color: #fff;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    border: 3px solid #7f8c8d;
+    border-radius: 10px;
+    padding: 15px 30px;
+    text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+    font-family: 'Courier New', monospace;
+    letter-spacing: 2px;
+}
+
+.mobile-timer-display.running {
+    color: #2ecc71;
+    text-shadow: 0 0 15px rgba(46, 204, 113, 0.5);
+}
+
+.mobile-timer-display.warning {
+    color: #f39c12;
+    text-shadow: 0 0 15px rgba(243, 156, 18, 0.5);
+    animation: timerPulse 0.5s ease infinite;
+}
+
+.mobile-timer-display.danger {
+    color: #e74c3c;
+    text-shadow: 0 0 15px rgba(231, 76, 60, 0.5);
+    animation: timerPulse 0.3s ease infinite;
+}
+
+.mobile-timer-input-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.mobile-timer-input-group label {
+    font-size: 0.9rem;
+    color: #ffd700;
+    font-weight: bold;
+}
+
+.mobile-timer-input-group input {
+    width: 80px;
+    padding: 8px 12px;
+    font-size: 1rem;
+    font-weight: bold;
+    border: 2px solid #7f8c8d;
+    border-radius: 6px;
+    background: #34495e;
+    color: #fff;
+    text-align: center;
+}
+
+.mobile-timer-input-group input:focus {
+    outline: none;
+    border-color: #ffd700;
+    box-shadow: 0 0 10px rgba(255, 215, 0, 0.3);
+}
+
+.mobile-timer-buttons {
+    display: flex;
+    gap: 10px;
+}
+
+.mobile-timer-buttons .timer-btn {
+    padding: 10px 20px;
+    font-size: 0.9rem;
+}
+
+/* Entry Log Toggle Button Styling */
+.entry-log-toggle-btn {
+    right: 115px;
+    background: linear-gradient(135deg, #1abc9c 0%, #16a085 100%);
+    border: 3px solid #48c9b0;
+    box-shadow: 0 4px 15px rgba(26, 188, 156, 0.4);
+}
+
+.entry-log-toggle-btn:hover {
+    transform: scale(1.1);
+    box-shadow: 0 6px 20px rgba(26, 188, 156, 0.6);
+}
+
+.entry-log-toggle-btn.active {
+    background: linear-gradient(135deg, #27ae60 0%, #229954 100%);
+    border-color: #2ecc71;
+    box-shadow: 0 4px 15px rgba(39, 174, 96, 0.4);
+}
+
+.entry-log-toggle-btn.active:hover {
+    box-shadow: 0 6px 20px rgba(39, 174, 96, 0.6);
+}
+
+/* Mobile Entry Log Panel (Hidden on Desktop) */
+.mobile-entry-log-panel {
+    display: none;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    padding: 15px 20px;
+    border-top: 3px solid #1abc9c;
+    box-shadow: 0 -5px 20px rgba(0, 0, 0, 0.4);
+    z-index: 998;
+    animation: panelSlideUp 0.3s ease;
+}
+
+.mobile-entry-log-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+}
+
+.mobile-entry-log-label {
+    font-size: 1rem;
+    font-weight: bold;
+    color: #ffd700;
+    letter-spacing: 2px;
+}
+
+.mobile-entry-log-list {
+    width: 100%;
+    max-height: 200px;
+    overflow-y: auto;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+    padding: 10px;
+}
+
+.mobile-entry-log-list::-webkit-scrollbar {
+    width: 8px;
+}
+
+.mobile-entry-log-list::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+}
+
+.mobile-entry-log-list::-webkit-scrollbar-thumb {
+    background: #7f8c8d;
+    border-radius: 4px;
+}
+
+.mobile-entry-log-list::-webkit-scrollbar-thumb:hover {
+    background: #95a5a6;
 }
 
 /* Toggle Button Content */
@@ -1069,6 +1298,7 @@ body {
     justify-content: center;
     z-index: 3000;
     padding: 20px;
+    overflow-y: auto;
 }
 
 .login-container {
@@ -1534,6 +1764,7 @@ body {
     justify-content: center;
     z-index: 2000;
     padding: 20px;
+    overflow-y: auto;
 }
 
 .setup-container {
@@ -1769,6 +2000,7 @@ body {
     justify-content: center;
     z-index: 2000;
     padding: 20px;
+    overflow-y: auto;
 }
 
 .end-container {
@@ -1920,29 +2152,58 @@ body {
 
 /* Responsive Design */
 @media (max-width: 768px) {
+    body {
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .container {
+        overflow-y: visible;
+    }
+
     .logo {
         font-size: 2.5rem;
         letter-spacing: 4px;
     }
 
     .question-container {
-        flex-direction: column;
+        flex-direction: row;
+        flex-wrap: wrap;
         gap: 10px;
     }
 
+    /* Team scores row above question */
     .team-score-inline {
-        min-width: auto;
+        flex: 1;
+        min-width: 120px;
         padding: 10px 15px;
-        flex-direction: row;
-        gap: 15px;
+        flex-direction: column;
+        gap: 5px;
+    }
+
+    /* Team 1 on the RIGHT */
+    .team-score-inline.team-1 {
+        order: 2;
+    }
+
+    /* Team 2 on the LEFT */
+    .team-score-inline.team-2 {
+        order: 1;
     }
 
     .team-score-inline .team-name {
-        margin-bottom: 0;
+        margin-bottom: 3px;
     }
 
     .team-score-inline .score {
-        font-size: 1.5rem;
+        font-size: 1.8rem;
+    }
+
+    /* Question below the team scores */
+    .question-content {
+        order: 3;
+        flex-basis: 100%;
+        width: 100%;
     }
 
     .question-label {
@@ -1974,22 +2235,8 @@ body {
         order: 0;
     }
 
-    .timer-panel {
-        width: 100%;
-        order: -1;
-    }
-
-    .timer-display {
-        font-size: 2rem;
-    }
-
-    .timer-buttons {
-        flex-direction: row;
-        justify-content: center;
-    }
-
-    .timer-btn {
-        flex: 1;
+    .host-toggle-btn.active {
+        bottom: 150px; /* Above host panel with gap */
     }
 
     .entry-log-panel {
@@ -2067,6 +2314,1103 @@ body {
     .play-again-btn {
         padding: 15px 40px;
         font-size: 1.2rem;
+    }
+}
+
+/* Mobile Portrait Only - Timer & Entry Log Toggle Buttons */
+@media (max-width: 768px) and (orientation: portrait) {
+    body {
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .container {
+        overflow-y: visible;
+        padding-bottom: 120px; /* Space for toggle buttons at bottom */
+    }
+
+    /* Hide original timer panel in portrait - use toggle button instead */
+    .timer-panel {
+        display: none !important;
+    }
+
+    /* Hide original entry log panel in portrait - use toggle button instead */
+    .entry-log-panel {
+        display: none !important;
+    }
+
+    /* Show timer toggle button in portrait */
+    .timer-toggle-btn {
+        display: flex;
+        width: 85px;
+        height: 85px;
+        left: 115px;
+    }
+
+    .timer-toggle-btn.active {
+        bottom: 180px; /* Above mobile timer panel with gap */
+    }
+
+    /* Show entry log toggle button in portrait */
+    .entry-log-toggle-btn {
+        display: flex;
+        width: 85px;
+        height: 85px;
+        right: 115px;
+    }
+
+    .entry-log-toggle-btn.active {
+        bottom: 180px; /* Above mobile entry log panel with gap */
+    }
+
+    /* Show mobile timer panel when toggled */
+    .mobile-timer-panel.visible {
+        display: block;
+    }
+
+    /* Show mobile entry log panel when toggled */
+    .mobile-entry-log-panel.visible {
+        display: block;
+    }
+}
+
+/* Small Mobile Devices (phones) */
+@media (max-width: 480px) {
+    body {
+        padding: 10px;
+    }
+
+    /* Login Screen Mobile */
+    .login-container {
+        padding: 30px 20px;
+        border-radius: 20px;
+    }
+
+    .login-logo {
+        font-size: 2rem;
+        letter-spacing: 3px;
+    }
+
+    .login-subtitle {
+        font-size: 1rem;
+        letter-spacing: 2px;
+        margin-bottom: 25px;
+    }
+
+    .login-input-group input {
+        padding: 12px 15px;
+        font-size: 1rem;
+    }
+
+    .login-btn {
+        padding: 14px 30px;
+        font-size: 1.1rem;
+        letter-spacing: 2px;
+    }
+
+    /* Tutorial Screen Mobile */
+    .tutorial-container {
+        padding: 25px 15px;
+        border-radius: 20px;
+    }
+
+    .tutorial-logo {
+        font-size: 1.8rem;
+        letter-spacing: 3px;
+    }
+
+    .tutorial-subtitle {
+        font-size: 1.1rem;
+        letter-spacing: 2px;
+        margin-bottom: 20px;
+    }
+
+    .tutorial-section {
+        padding: 15px;
+    }
+
+    .tutorial-heading {
+        font-size: 1rem;
+    }
+
+    .tutorial-text {
+        font-size: 0.85rem;
+        line-height: 1.6;
+    }
+
+    .tutorial-list li {
+        font-size: 0.85rem;
+        padding: 6px 0 6px 20px;
+    }
+
+    .tutorial-shortcuts {
+        gap: 8px;
+    }
+
+    .tutorial-shortcuts .shortcut {
+        padding: 6px 10px;
+        font-size: 0.8rem;
+    }
+
+    .tutorial-shortcuts kbd {
+        padding: 3px 8px;
+        font-size: 0.75rem;
+    }
+
+    .video-dropdown-text {
+        font-size: 0.95rem;
+    }
+
+    .continue-btn {
+        padding: 14px 30px;
+        font-size: 1.1rem;
+        letter-spacing: 2px;
+    }
+
+    /* Setup Screen Mobile */
+    .setup-container {
+        padding: 25px 15px;
+    }
+
+    .setup-logo {
+        font-size: 2rem;
+        letter-spacing: 3px;
+    }
+
+    .setup-subtitle {
+        font-size: 1.2rem;
+        margin-bottom: 25px;
+    }
+
+    .setup-label {
+        font-size: 1rem;
+    }
+
+    .team-input-group {
+        flex-direction: column;
+        gap: 8px;
+        padding: 12px;
+    }
+
+    .team-input-group input {
+        padding: 12px 15px;
+        font-size: 1rem;
+    }
+
+    .rounds-selector {
+        gap: 8px;
+    }
+
+    .round-btn {
+        width: 45px;
+        height: 45px;
+        font-size: 1.1rem;
+    }
+
+    .custom-rounds input {
+        padding: 12px;
+        font-size: 1rem;
+    }
+
+    .start-game-btn {
+        padding: 16px 30px;
+        font-size: 1.2rem;
+        letter-spacing: 2px;
+    }
+
+    .back-btn {
+        padding: 10px 20px;
+        font-size: 0.9rem;
+    }
+
+    /* Game Screen Mobile */
+    .question-container {
+        padding: 10px 12px;
+        border-radius: 12px;
+        margin-bottom: 12px;
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    /* Team scores with points below name */
+    .team-score-inline {
+        flex: 1;
+        min-width: 100px;
+        padding: 8px 12px;
+        border-radius: 8px;
+        flex-direction: column;
+        gap: 3px;
+    }
+
+    /* Team 1 on the RIGHT */
+    .team-score-inline.team-1 {
+        order: 2;
+    }
+
+    /* Team 2 on the LEFT */
+    .team-score-inline.team-2 {
+        order: 1;
+    }
+
+    .team-score-inline .team-name {
+        font-size: 0.7rem;
+        margin-bottom: 2px;
+    }
+
+    .team-score-inline .score {
+        font-size: 1.5rem;
+    }
+
+    /* Question below teams, full width */
+    .question-content {
+        order: 3;
+        flex-basis: 100%;
+        width: 100%;
+    }
+
+    .question-label {
+        font-size: 0.8rem;
+        letter-spacing: 1px;
+    }
+
+    .question {
+        font-size: 1.1rem;
+        padding: 6px 8px;
+        line-height: 1.4;
+    }
+
+    /* Strikes Mobile */
+    .strikes-container {
+        padding: 8px 10px;
+        margin-bottom: 10px;
+    }
+
+    .strike {
+        width: 40px;
+        height: 40px;
+        font-size: 1.4rem;
+    }
+
+    /* Game Board Mobile */
+    .game-board-wrapper {
+        gap: 12px;
+        margin-bottom: 15px;
+    }
+
+    /* Answer Slots - Single Column on Mobile */
+    .answer-row {
+        flex-direction: column;
+        gap: 10px;
+        margin-bottom: 10px;
+    }
+
+    .answer-slot {
+        min-height: 80px;
+        padding: 12px;
+        border-radius: 10px;
+        border-width: 3px;
+    }
+
+    .answer-number {
+        width: 24px;
+        height: 24px;
+        font-size: 0.9rem;
+        top: 6px;
+        left: 8px;
+    }
+
+    .answer-text {
+        font-size: 1.1rem;
+        min-height: 30px;
+        margin: 5px 0;
+    }
+
+    .answer-points {
+        font-size: 1.4rem;
+        margin-top: 4px;
+    }
+
+    /* Timer Panel Mobile */
+    .timer-panel {
+        padding: 12px;
+        border-radius: 12px;
+    }
+
+    .timer-label {
+        font-size: 0.85rem;
+        margin-bottom: 10px;
+    }
+
+    .timer-display {
+        font-size: 1.8rem;
+        padding: 10px 8px;
+        margin-bottom: 10px;
+    }
+
+    .timer-input-group input {
+        padding: 6px;
+        font-size: 0.9rem;
+    }
+
+    .timer-btn {
+        padding: 6px 8px;
+        font-size: 0.7rem;
+    }
+
+    /* Entry Log Mobile */
+    .entry-log-panel {
+        padding: 12px;
+        border-radius: 12px;
+        max-height: 200px;
+    }
+
+    .entry-log-label {
+        font-size: 0.85rem;
+    }
+
+    .entry-log-list {
+        min-height: 80px;
+        padding: 6px;
+    }
+
+    .entry-log-item {
+        padding: 5px 6px;
+        font-size: 0.7rem;
+    }
+
+    .entry-log-clear-btn {
+        padding: 6px 8px;
+        font-size: 0.7rem;
+    }
+
+    /* Toggle Buttons Mobile */
+    .host-toggle-btn,
+    .answer-toggle-btn,
+    .timer-toggle-btn,
+    .entry-log-toggle-btn {
+        width: 65px;
+        height: 65px;
+        bottom: 15px;
+    }
+
+    .host-toggle-btn {
+        left: 15px;
+    }
+
+    .timer-toggle-btn {
+        left: 90px;
+    }
+
+    .entry-log-toggle-btn {
+        right: 90px;
+    }
+
+    .answer-toggle-btn {
+        right: 15px;
+    }
+
+    .host-toggle-btn .toggle-icon,
+    .answer-toggle-btn .toggle-icon,
+    .timer-toggle-btn .toggle-icon,
+    .entry-log-toggle-btn .toggle-icon {
+        font-size: 1.8rem;
+    }
+
+    .host-toggle-btn .toggle-text,
+    .answer-toggle-btn .toggle-text,
+    .timer-toggle-btn .toggle-text,
+    .entry-log-toggle-btn .toggle-text {
+        font-size: 0.5rem;
+        margin-top: 2px;
+    }
+
+    .host-toggle-btn.active {
+        bottom: 580px; /* Above host panel with gap */
+    }
+
+    .timer-toggle-btn.active {
+        bottom: 200px; /* Above mobile timer panel with gap */
+    }
+
+    .entry-log-toggle-btn.active {
+        bottom: 200px; /* Above mobile entry log panel with gap */
+    }
+
+    /* Mobile Timer Panel Small Phones */
+    .mobile-timer-panel {
+        padding: 12px 15px;
+    }
+
+    .mobile-timer-display {
+        font-size: 2.5rem;
+        padding: 12px 25px;
+    }
+
+    .mobile-timer-input-group label {
+        font-size: 0.8rem;
+    }
+
+    .mobile-timer-input-group input {
+        width: 70px;
+        padding: 6px 10px;
+        font-size: 0.9rem;
+    }
+
+    .mobile-timer-buttons .timer-btn {
+        padding: 8px 15px;
+        font-size: 0.8rem;
+    }
+
+    /* Mobile Entry Log Panel Small Phones */
+    .mobile-entry-log-panel {
+        padding: 12px 15px;
+    }
+
+    .mobile-entry-log-label {
+        font-size: 0.9rem;
+    }
+
+    .mobile-entry-log-list {
+        max-height: 150px;
+        padding: 8px;
+    }
+
+    /* Host Panel Mobile */
+    .host-panel {
+        padding: 12px 15px;
+    }
+
+    .controls-container {
+        gap: 8px;
+        margin-bottom: 10px;
+    }
+
+    .control-btn {
+        padding: 10px 15px;
+        font-size: 0.85rem;
+        border-radius: 8px;
+    }
+
+    .points-input-container {
+        flex-direction: column;
+        gap: 10px;
+        padding: 12px;
+        border-radius: 10px;
+    }
+
+    .points-input-container label {
+        font-size: 0.9rem;
+    }
+
+    .points-input-container input,
+    .points-input-container select {
+        padding: 10px 15px;
+        font-size: 1rem;
+        width: 100%;
+    }
+
+    /* Answer Panel Mobile */
+    .answer-input-container {
+        padding: 12px 15px;
+        border-radius: 10px;
+    }
+
+    .answer-input-label {
+        font-size: 0.9rem;
+        margin-bottom: 8px;
+    }
+
+    .answer-input-wrapper {
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .answer-input-wrapper input {
+        padding: 10px 12px;
+        font-size: 1rem;
+    }
+
+    .answer-input-wrapper button {
+        width: 100%;
+        padding: 12px 15px;
+    }
+
+    .check-status {
+        font-size: 0.85rem;
+        padding: 6px;
+    }
+
+    /* Fullscreen & Help Buttons Mobile */
+    .fullscreen-btn,
+    .help-btn {
+        width: 38px;
+        height: 38px;
+        border-radius: 6px;
+    }
+
+    .fullscreen-btn {
+        top: 10px;
+        right: 10px;
+    }
+
+    .help-btn {
+        top: 55px;
+        right: 10px;
+    }
+
+    .fullscreen-btn .fullscreen-icon,
+    .help-btn .help-icon {
+        font-size: 1.2rem;
+    }
+
+    /* End Screen Mobile */
+    .end-container {
+        padding: 25px 15px;
+    }
+
+    .end-title {
+        font-size: 2rem;
+        letter-spacing: 3px;
+        margin-bottom: 20px;
+    }
+
+    .trophy {
+        font-size: 3rem;
+    }
+
+    .winner-text {
+        font-size: 1.3rem;
+        letter-spacing: 2px;
+    }
+
+    .final-score-card {
+        min-width: 160px;
+        padding: 15px 20px;
+    }
+
+    .final-team-name {
+        font-size: 1rem;
+    }
+
+    .final-score-value {
+        font-size: 2.2rem;
+    }
+
+    .play-again-btn {
+        padding: 14px 30px;
+        font-size: 1.1rem;
+        letter-spacing: 2px;
+    }
+
+    /* Big Strike Mobile */
+    .big-strike {
+        width: 200px;
+        height: 200px;
+        font-size: 8rem;
+        border-width: 10px;
+    }
+
+    /* Time's Up Mobile */
+    .times-up {
+        font-size: 2.5rem;
+        padding: 25px 35px;
+        border-radius: 15px;
+        border-width: 5px;
+        letter-spacing: 3px;
+    }
+}
+
+/* Mobile Landscape Orientation */
+@media (max-width: 900px) and (orientation: landscape) {
+    body {
+        padding: 10px;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .container {
+        overflow-y: visible;
+    }
+
+    /* Question Container Landscape */
+    .question-container {
+        flex-direction: row;
+        padding: 10px 15px;
+        gap: 10px;
+    }
+
+    .team-score-inline {
+        flex-direction: column;
+        min-width: 90px;
+        padding: 8px 12px;
+        gap: 3px;
+    }
+
+    .team-score-inline .team-name {
+        font-size: 0.65rem;
+        margin-bottom: 2px;
+    }
+
+    .team-score-inline .score {
+        font-size: 1.4rem;
+    }
+
+    .question {
+        font-size: 1.1rem;
+        padding: 5px 10px;
+    }
+
+    .question-label {
+        font-size: 0.75rem;
+    }
+
+    /* Strikes Landscape */
+    .strikes-container {
+        padding: 6px 10px;
+        margin-bottom: 8px;
+    }
+
+    .strike {
+        width: 35px;
+        height: 35px;
+        font-size: 1.2rem;
+    }
+
+    /* Game Board Landscape - Side by side layout */
+    .game-board-wrapper {
+        flex-direction: row;
+        gap: 10px;
+        margin-bottom: 10px;
+        align-items: flex-start;
+    }
+
+    /* Show timer panel in landscape (override portrait hiding) */
+    .timer-panel {
+        display: block !important;
+        width: 140px;
+        order: 0;
+        padding: 10px;
+    }
+
+    /* Show entry log panel in landscape (override portrait hiding) */
+    .entry-log-panel {
+        display: flex !important;
+        width: 140px;
+        order: 2;
+    }
+
+    /* Hide timer toggle button in landscape - not needed */
+    .timer-toggle-btn {
+        display: none !important;
+    }
+
+    /* Hide entry log toggle button in landscape - not needed */
+    .entry-log-toggle-btn {
+        display: none !important;
+    }
+
+    /* Hide mobile timer panel in landscape */
+    .mobile-timer-panel,
+    .mobile-timer-panel.visible {
+        display: none !important;
+    }
+
+    /* Hide mobile entry log panel in landscape */
+    .mobile-entry-log-panel,
+    .mobile-entry-log-panel.visible {
+        display: none !important;
+    }
+
+    .timer-label {
+        font-size: 0.75rem;
+        margin-bottom: 8px;
+    }
+
+    .timer-display {
+        font-size: 1.5rem;
+        padding: 8px 6px;
+        margin-bottom: 8px;
+    }
+
+    .timer-input-group {
+        margin-bottom: 8px;
+    }
+
+    .timer-input-group label {
+        font-size: 0.65rem;
+    }
+
+    .timer-input-group input {
+        padding: 5px;
+        font-size: 0.85rem;
+    }
+
+    .timer-buttons {
+        flex-direction: column;
+        gap: 5px;
+    }
+
+    .timer-btn {
+        padding: 5px 6px;
+        font-size: 0.65rem;
+    }
+
+    .answers-container {
+        flex: 1;
+        order: 1;
+    }
+
+    /* Answer rows - 2 columns in landscape */
+    .answer-row {
+        flex-direction: row;
+        gap: 8px;
+        margin-bottom: 8px;
+    }
+
+    .answer-slot {
+        min-height: 70px;
+        padding: 8px 10px;
+    }
+
+    .answer-number {
+        width: 22px;
+        height: 22px;
+        font-size: 0.8rem;
+        top: 4px;
+        left: 6px;
+    }
+
+    .answer-text {
+        font-size: 0.95rem;
+        min-height: 25px;
+        margin: 3px 0;
+    }
+
+    .answer-points {
+        font-size: 1.1rem;
+        margin-top: 2px;
+    }
+
+    .entry-log-panel {
+        width: 140px;
+        order: 2;
+        max-height: none;
+        padding: 10px;
+    }
+
+    .entry-log-label {
+        font-size: 0.75rem;
+        margin-bottom: 6px;
+    }
+
+    .entry-log-list {
+        min-height: 120px;
+        max-height: 180px;
+        padding: 5px;
+    }
+
+    .entry-log-item {
+        padding: 4px 5px;
+        font-size: 0.65rem;
+        margin-bottom: 4px;
+    }
+
+    .entry-log-clear-btn {
+        padding: 5px 6px;
+        font-size: 0.65rem;
+    }
+
+    /* Toggle Buttons Landscape */
+    .host-toggle-btn,
+    .answer-toggle-btn {
+        width: 55px;
+        height: 55px;
+        bottom: 10px;
+    }
+
+    .host-toggle-btn {
+        left: 10px;
+    }
+
+    .answer-toggle-btn {
+        right: 10px;
+    }
+
+    .host-toggle-btn .toggle-icon,
+    .answer-toggle-btn .toggle-icon {
+        font-size: 1.5rem;
+    }
+
+    .host-toggle-btn .toggle-text,
+    .answer-toggle-btn .toggle-text {
+        font-size: 0.45rem;
+    }
+
+    .host-toggle-btn.active {
+        bottom: 115px; /* Above host panel with gap in landscape */
+    }
+
+    .timer-toggle-btn.active {
+        bottom: 130px; /* Above timer panel with gap in landscape */
+    }
+
+    /* Host Panel Landscape */
+    .host-panel {
+        padding: 10px 15px;
+    }
+
+    .controls-container {
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 6px;
+        justify-content: center;
+    }
+
+    .control-btn {
+        padding: 8px 12px;
+        font-size: 0.75rem;
+        width: auto;
+    }
+
+    .points-input-container {
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 10px;
+        padding: 10px;
+    }
+
+    .points-input-container label {
+        font-size: 0.8rem;
+    }
+
+    .points-input-container input,
+    .points-input-container select {
+        padding: 8px 12px;
+        font-size: 0.9rem;
+        width: auto;
+    }
+
+    /* Answer Panel Landscape */
+    .answer-input-container {
+        padding: 10px 15px;
+    }
+
+    .answer-input-label {
+        font-size: 0.8rem;
+        margin-bottom: 6px;
+    }
+
+    .answer-input-wrapper {
+        flex-direction: row;
+        gap: 10px;
+    }
+
+    .answer-input-wrapper input {
+        padding: 8px 12px;
+        font-size: 0.9rem;
+    }
+
+    .answer-input-wrapper button {
+        width: auto;
+        padding: 8px 15px;
+        font-size: 0.85rem;
+    }
+
+    /* Fullscreen & Help Buttons Landscape */
+    .fullscreen-btn,
+    .help-btn {
+        width: 35px;
+        height: 35px;
+    }
+
+    .fullscreen-btn {
+        top: 8px;
+        right: 8px;
+    }
+
+    .help-btn {
+        top: 48px;
+        right: 8px;
+    }
+
+    .fullscreen-btn .fullscreen-icon,
+    .help-btn .help-icon {
+        font-size: 1.1rem;
+    }
+
+    /* Big Strike Landscape */
+    .big-strike {
+        width: 180px;
+        height: 180px;
+        font-size: 7rem;
+        border-width: 8px;
+    }
+
+    /* Time's Up Landscape */
+    .times-up {
+        font-size: 2.2rem;
+        padding: 20px 30px;
+    }
+
+    /* Login/Setup/Tutorial Screens Landscape */
+    .login-screen,
+    .tutorial-screen,
+    .setup-screen,
+    .end-screen {
+        padding: 15px;
+    }
+
+    .login-container,
+    .setup-container,
+    .end-container {
+        padding: 20px 25px;
+        max-height: 95vh;
+        overflow-y: auto;
+    }
+
+    .tutorial-container {
+        padding: 20px 25px;
+        max-height: 95vh;
+    }
+
+    .login-logo,
+    .setup-logo {
+        font-size: 2rem;
+    }
+
+    .tutorial-logo {
+        font-size: 1.8rem;
+    }
+
+    .end-title {
+        font-size: 2rem;
+        margin-bottom: 15px;
+    }
+
+    .trophy {
+        font-size: 2.5rem;
+        margin-bottom: 8px;
+    }
+
+    .winner-text {
+        font-size: 1.2rem;
+    }
+
+    .winner-announcement {
+        margin-bottom: 20px;
+    }
+
+    .final-scores {
+        flex-direction: row;
+        gap: 20px;
+        margin-bottom: 20px;
+    }
+
+    .final-score-card {
+        padding: 12px 20px;
+        min-width: 140px;
+    }
+
+    .final-team-name {
+        font-size: 0.9rem;
+    }
+
+    .final-score-value {
+        font-size: 1.8rem;
+    }
+
+    .vs-divider {
+        display: block;
+        font-size: 1rem;
+    }
+
+    .play-again-btn {
+        padding: 12px 30px;
+        font-size: 1rem;
+    }
+
+    .login-btn,
+    .continue-btn,
+    .start-game-btn {
+        padding: 12px 25px;
+        font-size: 1rem;
+    }
+}
+
+/* Extra small landscape (very short screens) */
+@media (max-height: 400px) and (orientation: landscape) {
+    .question-container {
+        padding: 6px 10px;
+        margin-bottom: 6px;
+    }
+
+    .team-score-inline {
+        padding: 5px 8px;
+    }
+
+    .team-score-inline .score {
+        font-size: 1.2rem;
+    }
+
+    .question {
+        font-size: 0.95rem;
+    }
+
+    .strikes-container {
+        padding: 4px 8px;
+        margin-bottom: 6px;
+    }
+
+    .strike {
+        width: 28px;
+        height: 28px;
+        font-size: 1rem;
+    }
+
+    .game-board-wrapper {
+        gap: 6px;
+        margin-bottom: 6px;
+    }
+
+    .timer-panel,
+    .entry-log-panel {
+        width: 110px;
+        padding: 6px;
+    }
+
+    .timer-display {
+        font-size: 1.2rem;
+        padding: 5px;
+    }
+
+    .answer-slot {
+        min-height: 55px;
+        padding: 5px 8px;
+    }
+
+    .answer-text {
+        font-size: 0.85rem;
+    }
+
+    .answer-points {
+        font-size: 0.95rem;
+    }
+
+    .host-toggle-btn,
+    .answer-toggle-btn {
+        width: 45px;
+        height: 45px;
+    }
+
+    .host-toggle-btn .toggle-icon,
+    .answer-toggle-btn .toggle-icon {
+        font-size: 1.2rem;
+    }
+
+    .host-toggle-btn .toggle-text,
+    .answer-toggle-btn .toggle-text {
+        display: none;
     }
 }
 
