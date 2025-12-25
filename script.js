@@ -18,7 +18,7 @@ let roundPointsEarned = 0; // Track points earned from correct entries in curren
 // Load questions from CSV file
 async function loadQuestionsFromCSV() {
     try {
-        const response = await fetch('questions.csv');
+        const response = await fetch('questions1.csv');
         const csvText = await response.text();
         const lines = csvText.split('\n').filter(line => line.trim() !== '');
         
