@@ -7,8 +7,69 @@
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+    <!-- Mode Selection Screen -->
+    <div id="mode-screen" class="mode-screen">
+        <div class="mode-container">
+            <h1 class="mode-logo">FAMILY FEUD</h1>
+            <p class="mode-subtitle">Select Game Mode</p>
+            
+            <div class="mode-options">
+                <button type="button" id="single-device-btn" class="mode-btn">
+                    <span class="mode-icon">🎮</span>
+                    <span class="mode-title">Single Device</span>
+                    <span class="mode-desc">Control and display on the same screen</span>
+                </button>
+                
+                <button type="button" id="display-mode-btn" class="mode-btn">
+                    <span class="mode-icon">📺</span>
+                    <span class="mode-title">Display Mode</span>
+                    <span class="mode-desc">This screen shows the game, host controls from phone</span>
+                </button>
+            </div>
+            
+            <button type="button" id="how-to-play-mode-btn" class="how-to-play-btn">
+                <span class="play-icon">❓</span>
+                <span class="play-text">How to Play</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- QR Code Screen (Display Mode) -->
+    <div id="qr-screen" class="qr-screen" style="display: none;">
+        <div class="qr-container">
+            <h1 class="qr-logo">FAMILY FEUD</h1>
+            <p class="qr-subtitle">Scan to Control the Game</p>
+            
+            <div class="qr-code-wrapper">
+                <img id="qr-code-img" class="qr-code-img" src="" alt="QR Code">
+                <div id="qr-loading" class="qr-loading">Generating QR Code...</div>
+            </div>
+            
+            <div class="qr-info">
+                <p class="qr-room-label">Room Code:</p>
+                <p class="qr-room-code" id="qr-room-code">------</p>
+                <p class="qr-host-url" id="qr-host-url"></p>
+            </div>
+            
+            <div class="qr-status">
+                <div class="qr-status-indicator" id="host-status-indicator"></div>
+                <span id="host-status-text">Waiting for host to connect...</span>
+            </div>
+            
+            <div class="qr-buttons">
+                <button type="button" id="back-to-mode-btn" class="back-btn">
+                    ← Back
+                </button>
+                <button type="button" id="how-to-play-qr-btn" class="how-to-play-btn">
+                    <span class="play-icon">❓</span>
+                    <span class="play-text">How to Play</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Login Screen -->
-    <div id="login-screen" class="login-screen">
+    <div id="login-screen" class="login-screen" style="display: none;">
         <div class="login-container">
             <h1 class="login-logo">FAMILY FEUD</h1>
             <p class="login-subtitle">Host Login</p>
@@ -30,7 +91,19 @@
     <div id="tutorial-screen" class="tutorial-screen" style="display: none;">
         <div class="tutorial-container">
             <h1 class="tutorial-logo">FAMILY FEUD</h1>
-            <p class="tutorial-subtitle">🎮 Host Guide 🎮</p>
+            <p class="tutorial-subtitle">🎮 How to Play 🎮</p>
+            
+            <!-- Mode Tabs Header -->
+            <div class="tutorial-mode-tabs">
+                <button class="tutorial-mode-tab active" id="tutorial-single-tab" data-mode="single">
+                    <span class="tab-icon">🎮</span>
+                    <span class="tab-title">Single Device</span>
+                </button>
+                <button class="tutorial-mode-tab" id="tutorial-display-tab" data-mode="display">
+                    <span class="tab-icon">📺</span>
+                    <span class="tab-title">Display Mode</span>
+                </button>
+            </div>
             
             <!-- Video Dropdown Bar -->
             <div class="video-dropdown">
@@ -54,6 +127,7 @@
                 </div>
             </div>
             
+            <!-- Common Tutorial Content (shown for both modes) -->
             <div class="tutorial-content">
                 <div class="tutorial-section">
                     <h2 class="tutorial-heading">📋 The Questions</h2>
@@ -79,6 +153,42 @@
                 </div>
 
                 <div class="tutorial-section">
+                    <h2 class="tutorial-heading">✎ Smart Answer Checker</h2>
+                    <p class="tutorial-text">
+                        Type in what a contestant said, and the AI-powered system will automatically determine if it matches any answer on the board.
+                    </p>
+                    <p class="tutorial-text">
+                        <span class="tutorial-correct">✓ Correct answers</span> trigger confetti and reveal on the board!<br>
+                        <span class="tutorial-wrong">✗ Wrong answers</span> add a strike automatically.
+                    </p>
+                    <p class="tutorial-text">
+                        All guesses appear in the <strong>Entry Log</strong> so everyone can see what's been tried!
+                    </p>
+                </div>
+
+                <div class="tutorial-section">
+                    <h2 class="tutorial-heading">⏱️ Timer</h2>
+                    <p class="tutorial-text">
+                        Set how many seconds contestants get, then hit <strong>Start</strong>. When time runs out, a big <strong>"TIME'S UP!"</strong> will appear. Perfect for fast-paced rounds!
+                    </p>
+                </div>
+
+                <div class="tutorial-section">
+                    <h2 class="tutorial-heading">→ Next Round</h2>
+                    <p class="tutorial-text">
+                        After adding points to a team, click <strong>→ Next Round</strong> to see the round summary with statistics, then continue to the next question!
+                    </p>
+                </div>
+            </div>
+            
+            <!-- Single Device Mode Tutorial -->
+            <div class="tutorial-mode-content active" id="tutorial-single-content">
+                <div class="tutorial-mode-header">
+                    <h2 class="mode-section-title">🎮 Single Device Mode</h2>
+                    <p class="mode-section-desc">Control and display on the same screen — perfect for projector setups or TV casting!</p>
+                </div>
+                
+                <div class="tutorial-section">
                     <h2 class="tutorial-heading">🕹️ Host Controls</h2>
                     <p class="tutorial-text">
                         Click the <span class="tutorial-key">⚙ Controls</span> button (bottom-left) to reveal your hosting powers:
@@ -88,29 +198,16 @@
                         <li><strong>Reveal Answer</strong> — Flip over answers one by one (in order)</li>
                         <li><strong>Add/Remove Strike</strong> — Track those wrong guesses</li>
                         <li><strong>Add Points</strong> — Award points to the winning team</li>
+                        <li><strong>→ Next Round</strong> — Show round summary and continue</li>
                         <li><strong>Reset Round</strong> — Start the current round over</li>
                         <li><strong>End Game</strong> — Finish up and see the final scores</li>
                     </ul>
                 </div>
 
                 <div class="tutorial-section">
-                    <h2 class="tutorial-heading">✎ Smart Answer Checker</h2>
+                    <h2 class="tutorial-heading">✎ Answer Entry</h2>
                     <p class="tutorial-text">
-                        Click the <span class="tutorial-key">✎ Answer</span> button (bottom-right) to open the AI-powered answer checker! Type in what a contestant said, and the system will automatically determine if it matches any answer on the board.
-                    </p>
-                    <p class="tutorial-text">
-                        <span class="tutorial-correct">✓ Correct answers</span> trigger confetti and reveal on the board!<br>
-                        <span class="tutorial-wrong">✗ Wrong answers</span> add a strike automatically.
-                    </p>
-                    <p class="tutorial-text">
-                        All guesses appear in the <strong>Entry Log</strong> on the right side of the board so everyone can see what's been tried!
-                    </p>
-                </div>
-
-                <div class="tutorial-section">
-                    <h2 class="tutorial-heading">⏱️ Timer</h2>
-                    <p class="tutorial-text">
-                        Use the timer on the left side of the board to keep the pressure on! Set how many seconds contestants get, then hit <strong>Start</strong>. When time runs out, a big <strong>"TIME'S UP!"</strong> will appear. Perfect for fast-paced rounds!
+                        Click the <span class="tutorial-key">✎ Answer</span> button (bottom-right) to open the answer entry popup. The AI checker works right on your screen!
                     </p>
                 </div>
 
@@ -131,14 +228,78 @@
                 <div class="tutorial-section tutorial-tip">
                     <h2 class="tutorial-heading">💡 Pro Tip</h2>
                     <p class="tutorial-text">
-                        The points from correct answers are automatically tallied in the Points input box! You can still adjust the value before awarding points to a team. Use the <span class="tutorial-key">⛶</span> button to go fullscreen for the best experience!
+                        The points from correct answers are automatically tallied in the Points input box! You can still adjust the value before awarding points. Use the <span class="tutorial-key">⛶</span> button to go fullscreen!
                     </p>
                 </div>
             </div>
             
-            <button type="button" id="continue-to-setup-btn" class="continue-btn">
-                LET'S PLAY! 🎉
-            </button>
+            <!-- Display Mode Tutorial -->
+            <div class="tutorial-mode-content" id="tutorial-display-content">
+                <div class="tutorial-mode-header">
+                    <h2 class="mode-section-title">📺 Display Mode</h2>
+                    <p class="mode-section-desc">Use your phone as a remote control while the game displays on a big screen!</p>
+                </div>
+                
+                <div class="tutorial-section">
+                    <h2 class="tutorial-heading">📱 How It Works</h2>
+                    <p class="tutorial-text">
+                        <strong>1.</strong> Select "Display Mode" on the main screen to show a QR code.<br>
+                        <strong>2.</strong> Scan the QR code with your phone to open the host control panel.<br>
+                        <strong>3.</strong> Enter the host password to connect.<br>
+                        <strong>4.</strong> Control everything from your phone while the game displays on the big screen!
+                    </p>
+                </div>
+
+                <div class="tutorial-section">
+                    <h2 class="tutorial-heading">📺 The Display Screen</h2>
+                    <p class="tutorial-text">
+                        The display screen shows only the game — no controls visible! Perfect for audiences. It will:
+                    </p>
+                    <ul class="tutorial-list">
+                        <li>Show the question and answer board</li>
+                        <li>Display strikes when added</li>
+                        <li>Reveal answers with animations</li>
+                        <li>Show timer and entry log</li>
+                        <li>Display round summaries and final scores</li>
+                    </ul>
+                </div>
+
+                <div class="tutorial-section">
+                    <h2 class="tutorial-heading">📱 Host Phone Controls</h2>
+                    <p class="tutorial-text">
+                        Your phone becomes the ultimate control panel with tabbed navigation:
+                    </p>
+                    <ul class="tutorial-list">
+                        <li><strong>🎮 Game Tab</strong> — All game controls, answer board preview, reveal buttons</li>
+                        <li><strong>✎ Answer Tab</strong> — Enter and check player answers with AI</li>
+                        <li><strong>⏱ Timer Tab</strong> — Start, pause, reset, and set timer duration</li>
+                        <li><strong>📋 Log Tab</strong> — See all entries and guesses</li>
+                    </ul>
+                </div>
+
+                <div class="tutorial-section">
+                    <h2 class="tutorial-heading">🎯 Individual Answer Reveals</h2>
+                    <p class="tutorial-text">
+                        In Display Mode, you can reveal <strong>any answer individually!</strong> Each answer on your phone has its own "Reveal" button — no need to go in order. This gives you complete control over dramatic reveals!
+                    </p>
+                </div>
+
+                <div class="tutorial-section tutorial-tip">
+                    <h2 class="tutorial-heading">💡 Pro Tip</h2>
+                    <p class="tutorial-text">
+                        Answer entries on your phone won't show a popup on the display screen — keep your checking private! Only correct answers and strikes are shown to the audience. Click the <span class="tutorial-key">❓ How to Play</span> button on your phone anytime to see this guide!
+                    </p>
+                </div>
+            </div>
+            
+            <div class="tutorial-buttons">
+                <button type="button" id="back-to-mode-from-tutorial-btn" class="back-btn">
+                    ← Back to Mode Selection
+                </button>
+                <button type="button" id="continue-to-setup-btn" class="continue-btn">
+                    LET'S PLAY! 🎉
+                </button>
+            </div>
         </div>
     </div>
 
@@ -223,14 +384,14 @@
         <!-- Answer Board with Timer and Entry Log -->
         <div class="game-board-wrapper">
             <!-- Timer Panel (Left) -->
-            <div class="timer-panel">
+            <div class="timer-panel" id="timer-panel-desktop">
                 <div class="timer-label">TIMER</div>
                 <div class="timer-display" id="timer-display">00:00</div>
-                <div class="timer-input-group">
+                <div class="timer-input-group" id="timer-controls-desktop">
                     <label for="timer-seconds">Seconds:</label>
                     <input type="number" id="timer-seconds" value="30" min="1" max="999">
                 </div>
-                <div class="timer-buttons">
+                <div class="timer-buttons" id="timer-buttons-desktop">
                     <button class="timer-btn timer-start" id="timer-start-btn">Start</button>
                     <button class="timer-btn timer-pause" id="timer-pause-btn">Pause</button>
                     <button class="timer-btn timer-reset" id="timer-reset-btn">Reset</button>
@@ -323,6 +484,11 @@
                     <option value="2" id="team-select-option2">Team 2</option>
                 </select>
             </div>
+            
+            <!-- Next Round Button -->
+            <div class="next-round-container">
+                <button class="control-btn btn-next-round" id="show-summary-btn">→ Next Round</button>
+            </div>
         </div>
 
         <!-- Host Controls Toggle Button (Bottom Left) -->
@@ -377,6 +543,65 @@
         </button>
     </div>
 
+    <!-- Round Summary Screen -->
+    <div id="round-summary-screen" class="round-summary-screen" style="display: none;">
+        <div class="round-summary-container">
+            <h1 class="round-summary-title">ROUND <span id="summary-round-number">1</span> COMPLETE</h1>
+            
+            <div class="round-summary-points-awarded">
+                <div class="points-awarded-label">Points Awarded</div>
+                <div class="points-awarded-team" id="summary-winning-team">TEAM 1</div>
+                <div class="points-awarded-value">+<span id="summary-points-value">0</span></div>
+            </div>
+            
+            <div class="round-summary-stats">
+                <h2 class="stats-title">Round Statistics</h2>
+                <div class="stats-question" id="summary-question">Question goes here</div>
+                
+                <div class="stats-answers-section">
+                    <h3 class="stats-subtitle">✓ Correct Guesses</h3>
+                    <div class="stats-answers-list" id="summary-correct-answers">
+                        <!-- Dynamically populated -->
+                    </div>
+                </div>
+                
+                <div class="stats-answers-section stats-missed">
+                    <h3 class="stats-subtitle">✗ Missed Answers</h3>
+                    <div class="stats-answers-list" id="summary-missed-answers">
+                        <!-- Dynamically populated -->
+                    </div>
+                </div>
+                
+                <div class="stats-totals">
+                    <div class="stats-total-item">
+                        <span class="stats-total-label">Answers Found:</span>
+                        <span class="stats-total-value" id="summary-answers-found">0 / 0</span>
+                    </div>
+                    <div class="stats-total-item">
+                        <span class="stats-total-label">Strikes:</span>
+                        <span class="stats-total-value" id="summary-strikes">0</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="round-summary-scores">
+                <div class="summary-score-card team-1-summary">
+                    <div class="summary-team-name" id="summary-team1-name">TEAM 1</div>
+                    <div class="summary-score-value" id="summary-team1-score">0</div>
+                </div>
+                <div class="summary-vs">VS</div>
+                <div class="summary-score-card team-2-summary">
+                    <div class="summary-team-name" id="summary-team2-name">TEAM 2</div>
+                    <div class="summary-score-value" id="summary-team2-score">0</div>
+                </div>
+            </div>
+            
+            <button type="button" id="next-round-btn" class="next-round-btn">
+                NEXT ROUND →
+            </button>
+        </div>
+    </div>
+
     <!-- End Game Screen -->
     <div id="end-screen" class="end-screen" style="display: none;">
         <div class="end-container">
@@ -421,6 +646,8 @@
         <span class="help-icon">?</span>
     </button>
 
+    <!-- Socket.IO Client -->
+    <script src="/socket.io/socket.io.js"></script>
     <script src="script.js"></script>
 </body>
 </html>

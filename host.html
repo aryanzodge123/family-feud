@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Family Feud - Host Control</title>
+    <link rel="stylesheet" href="host.css">
+</head>
+<body>
+    <!-- Connection Status Bar -->
+    <div class="connection-bar" id="connection-bar">
+        <span class="connection-indicator" id="connection-indicator"></span>
+        <span class="connection-text" id="connection-text">Connecting...</span>
+    </div>
+
+    <!-- Host Login Screen -->
+    <div id="host-login-screen" class="host-screen active">
+        <div class="host-login-container">
+            <h1 class="host-logo">FAMILY FEUD</h1>
+            <p class="host-subtitle">Host Control</p>
+            
+            <div class="host-login-form">
+                <div class="host-input-group">
+                    <label class="host-label">Room Code</label>
+                    <input type="text" id="room-code-input" placeholder="Enter room code..." autocomplete="off" maxlength="6">
+                </div>
+                <div class="host-input-group">
+                    <label class="host-label">Host Password</label>
+                    <input type="password" id="host-password-input" placeholder="Enter password..." autocomplete="off">
+                </div>
+                <div id="host-login-error" class="host-login-error"></div>
+                <button type="button" id="host-login-btn" class="host-login-btn">
+                    CONNECT
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Host Take Over Confirmation -->
+    <div id="take-over-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <h2>Another Host Connected</h2>
+            <p>Another device is already controlling this game. Do you want to take over?</p>
+            <div class="modal-buttons">
+                <button id="take-over-btn" class="modal-btn primary">Take Over</button>
+                <button id="cancel-take-over-btn" class="modal-btn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Host Main Control Panel -->
+    <div id="host-control-screen" class="host-screen" style="display: none;">
+        <!-- Navigation Tabs -->
+        <div class="host-nav-tabs">
+            <button class="nav-tab active" data-tab="game">🎮 Game</button>
+            <button class="nav-tab" data-tab="answer">✎ Answer</button>
+            <button class="nav-tab" data-tab="timer">⏱ Timer</button>
+            <button class="nav-tab" data-tab="log">📋 Log</button>
+            <button class="nav-tab help-tab" data-tab="help">❓</button>
+        </div>
+
+        <!-- Game Info Header -->
+        <div class="game-info-header">
+            <div class="score-display">
+                <div class="team-score team1">
+                    <span class="team-label" id="host-team1-name">TEAM 1</span>
+                    <span class="team-points" id="host-team1-score">0</span>
+                </div>
+                <div class="round-display">
+                    <span class="round-label">Round</span>
+                    <span class="round-value"><span id="host-current-round">1</span>/<span id="host-total-rounds">7</span></span>
+                </div>
+                <div class="team-score team2">
+                    <span class="team-label" id="host-team2-name">TEAM 2</span>
+                    <span class="team-points" id="host-team2-score">0</span>
+                </div>
+            </div>
+            <div class="strikes-display">
+                <span class="strike-x" id="host-strike-1">✗</span>
+                <span class="strike-x" id="host-strike-2">✗</span>
+                <span class="strike-x" id="host-strike-3">✗</span>
+            </div>
+        </div>
+
+        <!-- Tab Content: Game Controls -->
+        <div class="tab-content active" id="tab-game">
+            <!-- Current Question Display -->
+            <div class="current-question-box">
+                <div class="question-label">Current Question:</div>
+                <div class="question-text" id="host-question-text">No question loaded</div>
+            </div>
+
+            <!-- Answer Board Preview -->
+            <div class="answer-preview">
+                <div class="answer-item" data-index="0">
+                    <span class="answer-num">1</span>
+                    <span class="answer-text" id="host-answer-0">?</span>
+                    <span class="answer-pts" id="host-points-0"></span>
+                    <button class="reveal-btn" data-index="0">Reveal</button>
+                </div>
+                <div class="answer-item" data-index="1">
+                    <span class="answer-num">2</span>
+                    <span class="answer-text" id="host-answer-1">?</span>
+                    <span class="answer-pts" id="host-points-1"></span>
+                    <button class="reveal-btn" data-index="1">Reveal</button>
+                </div>
+                <div class="answer-item" data-index="2">
+                    <span class="answer-num">3</span>
+                    <span class="answer-text" id="host-answer-2">?</span>
+                    <span class="answer-pts" id="host-points-2"></span>
+                    <button class="reveal-btn" data-index="2">Reveal</button>
+                </div>
+                <div class="answer-item" data-index="3">
+                    <span class="answer-num">4</span>
+                    <span class="answer-text" id="host-answer-3">?</span>
+                    <span class="answer-pts" id="host-points-3"></span>
+                    <button class="reveal-btn" data-index="3">Reveal</button>
+                </div>
+                <div class="answer-item" data-index="4">
+                    <span class="answer-num">5</span>
+                    <span class="answer-text" id="host-answer-4">?</span>
+                    <span class="answer-pts" id="host-points-4"></span>
+                    <button class="reveal-btn" data-index="4">Reveal</button>
+                </div>
+                <div class="answer-item" data-index="5">
+                    <span class="answer-num">6</span>
+                    <span class="answer-text" id="host-answer-5">?</span>
+                    <span class="answer-pts" id="host-points-5"></span>
+                    <button class="reveal-btn" data-index="5">Reveal</button>
+                </div>
+            </div>
+
+            <!-- Main Game Controls -->
+            <div class="control-grid">
+                <button class="control-btn primary" id="host-new-question-btn">
+                    <span class="btn-icon">📝</span>
+                    <span class="btn-text">New Question</span>
+                </button>
+                <button class="control-btn secondary" id="host-reveal-next-btn">
+                    <span class="btn-icon">👁</span>
+                    <span class="btn-text">Reveal Next</span>
+                </button>
+            </div>
+
+            <!-- Strike Controls -->
+            <div class="strike-controls">
+                <button class="strike-btn add" id="host-add-strike-btn">
+                    <span class="btn-icon">❌</span>
+                    <span class="btn-text">Add Strike</span>
+                </button>
+                <button class="strike-btn remove" id="host-remove-strike-btn">
+                    <span class="btn-icon">↩</span>
+                    <span class="btn-text">Remove Strike</span>
+                </button>
+            </div>
+
+            <!-- Points Controls -->
+            <div class="points-section">
+                <div class="points-header">Award Points</div>
+                <div class="points-amount">
+                    <label>Points:</label>
+                    <input type="number" id="host-points-input" value="0" min="0">
+                    <span class="points-auto" id="host-round-points">(Round: 0)</span>
+                </div>
+                <div class="points-team-buttons">
+                    <button class="team-award-btn team1" id="host-award-team1-btn">
+                        <span id="host-award-team1-name">Team 1</span>
+                    </button>
+                    <button class="team-award-btn team2" id="host-award-team2-btn">
+                        <span id="host-award-team2-name">Team 2</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Game Flow Controls -->
+            <div class="flow-controls">
+                <button class="flow-btn next-round" id="host-next-round-btn">→ Next Round</button>
+                <button class="flow-btn warning" id="host-reset-round-btn">Reset Round</button>
+                <button class="flow-btn danger" id="host-end-game-btn">End Game</button>
+            </div>
+        </div>
+
+        <!-- Tab Content: Answer Check -->
+        <div class="tab-content" id="tab-answer">
+            <div class="answer-check-section">
+                <div class="answer-input-wrapper">
+                    <label class="answer-label">Enter Player's Answer</label>
+                    <input type="text" id="host-answer-input" placeholder="Type answer here..." autocomplete="off">
+                    <button class="check-btn" id="host-check-answer-btn">Check Answer</button>
+                </div>
+                
+                <div class="answer-result" id="host-answer-result" style="display: none;">
+                    <div class="result-header" id="result-header">Result</div>
+                    <div class="result-details">
+                        <div class="result-item">
+                            <span class="result-label">Match:</span>
+                            <span class="result-value" id="result-match">-</span>
+                        </div>
+                        <div class="result-item">
+                            <span class="result-label">Matched Answer:</span>
+                            <span class="result-value" id="result-matched-answer">-</span>
+                        </div>
+                        <div class="result-item">
+                            <span class="result-label">Confidence:</span>
+                            <span class="result-value" id="result-confidence">-</span>
+                        </div>
+                        <div class="result-item full-width">
+                            <span class="result-label">Reason:</span>
+                            <span class="result-value" id="result-reason">-</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="answer-checking" id="host-answer-checking" style="display: none;">
+                    <div class="spinner"></div>
+                    <span>Checking answer...</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab Content: Timer -->
+        <div class="tab-content" id="tab-timer">
+            <div class="timer-section">
+                <div class="timer-display-large" id="host-timer-display">00:30</div>
+                
+                <div class="timer-presets">
+                    <button class="preset-btn" data-seconds="15">15s</button>
+                    <button class="preset-btn" data-seconds="30">30s</button>
+                    <button class="preset-btn" data-seconds="45">45s</button>
+                    <button class="preset-btn" data-seconds="60">60s</button>
+                </div>
+                
+                <div class="timer-custom">
+                    <label>Custom:</label>
+                    <input type="number" id="host-timer-input" value="30" min="1" max="999">
+                    <span>seconds</span>
+                </div>
+                
+                <div class="timer-controls">
+                    <button class="timer-control-btn start" id="host-timer-start-btn">
+                        <span class="btn-icon">▶</span>
+                        <span>Start</span>
+                    </button>
+                    <button class="timer-control-btn pause" id="host-timer-pause-btn">
+                        <span class="btn-icon">⏸</span>
+                        <span>Pause</span>
+                    </button>
+                    <button class="timer-control-btn reset" id="host-timer-reset-btn">
+                        <span class="btn-icon">↺</span>
+                        <span>Reset</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab Content: Entry Log -->
+        <div class="tab-content" id="tab-log">
+            <div class="log-section">
+                <div class="log-header">
+                    <span>Entry Log</span>
+                    <button class="clear-log-btn" id="host-clear-log-btn">Clear</button>
+                </div>
+                <div class="log-list" id="host-log-list">
+                    <div class="log-empty">No entries yet</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab Content: How to Play -->
+        <div class="tab-content" id="tab-help">
+            <div class="help-section">
+                <h2 class="help-title">📺 Display Mode Guide</h2>
+                
+                <div class="help-card">
+                    <h3>🎯 Game Controls</h3>
+                    <ul>
+                        <li><strong>New Question</strong> — Load the next question</li>
+                        <li><strong>Reveal</strong> — Each answer has its own reveal button</li>
+                        <li><strong>Add/Remove Strike</strong> — Track wrong guesses</li>
+                        <li><strong>Add Points</strong> — Award points to a team</li>
+                        <li><strong>→ Next Round</strong> — Show summary and continue</li>
+                    </ul>
+                </div>
+
+                <div class="help-card">
+                    <h3>✎ Answer Checking</h3>
+                    <p>Type what the contestant said in the Answer tab. The AI will check if it matches any answer on the board.</p>
+                    <p>✓ Correct = Confetti + Auto-reveal</p>
+                    <p>✗ Wrong = Strike added</p>
+                </div>
+
+                <div class="help-card">
+                    <h3>📺 What Players See</h3>
+                    <p>The display screen shows only the game — no controls visible! Answer checking is private to you.</p>
+                </div>
+
+                <div class="help-card">
+                    <h3>💡 Pro Tips</h3>
+                    <ul>
+                        <li>Points are auto-tallied when answers are revealed</li>
+                        <li>You can reveal answers in any order!</li>
+                        <li>Use the timer for fast-paced rounds</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Setup Controls (shown when on setup screen) -->
+        <div class="setup-controls" id="host-setup-controls" style="display: none;">
+            <h2 class="setup-title">Game Setup</h2>
+            
+            <div class="setup-input-group">
+                <label>Team 1 Name</label>
+                <input type="text" id="host-team1-input" placeholder="Team 1" maxlength="20">
+            </div>
+            
+            <div class="setup-input-group">
+                <label>Team 2 Name</label>
+                <input type="text" id="host-team2-input" placeholder="Team 2" maxlength="20">
+            </div>
+            
+            <div class="setup-input-group">
+                <label>Number of Rounds</label>
+                <div class="rounds-buttons">
+                    <button class="round-select-btn" data-rounds="3">3</button>
+                    <button class="round-select-btn" data-rounds="5">5</button>
+                    <button class="round-select-btn selected" data-rounds="7">7</button>
+                    <button class="round-select-btn" data-rounds="10">10</button>
+                </div>
+                <input type="number" id="host-custom-rounds" placeholder="Custom" min="1" max="50">
+            </div>
+            
+            <button class="start-game-btn" id="host-start-game-btn">START GAME</button>
+            
+            <button class="setup-help-btn" id="host-setup-help-btn">
+                <span class="help-icon">❓</span>
+                <span class="help-text">How to Play</span>
+            </button>
+        </div>
+
+        <!-- Navigation Controls -->
+        <div class="nav-controls">
+            <button class="nav-btn" id="host-nav-setup-btn" title="Go to Setup">
+                <span class="nav-icon">⚙</span>
+                <span class="nav-text">Setup</span>
+            </button>
+            <button class="nav-btn" id="host-nav-game-btn" title="Go to Game">
+                <span class="nav-icon">🎮</span>
+                <span class="nav-text">Game</span>
+            </button>
+            <button class="nav-btn danger" id="host-reset-game-btn" title="Reset Game">
+                <span class="nav-icon">🔄</span>
+                <span class="nav-text">Reset</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Disconnected Overlay -->
+    <div id="disconnected-overlay" class="overlay" style="display: none;">
+        <div class="overlay-content">
+            <div class="overlay-icon">📡</div>
+            <h2>Connection Lost</h2>
+            <p id="disconnect-reason">Attempting to reconnect...</p>
+            <button id="reconnect-btn" class="reconnect-btn">Reconnect</button>
+        </div>
+    </div>
+
+    <!-- Socket.IO Client -->
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="host.js"></script>
+</body>
+</html>
+
