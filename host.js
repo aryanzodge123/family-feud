@@ -98,6 +98,7 @@ const hostTeam2Input = document.getElementById('host-team2-input');
 const roundSelectBtns = document.querySelectorAll('.round-select-btn');
 const hostCustomRounds = document.getElementById('host-custom-rounds');
 const hostStartGameBtn = document.getElementById('host-start-game-btn');
+const hostSetupHelpBtn = document.getElementById('host-setup-help-btn');
 
 // Navigation Elements
 const hostNavSetupBtn = document.getElementById('host-nav-setup-btn');
@@ -411,8 +412,9 @@ function initSocket() {
     });
     
     socket.on('round:continue', () => {
-        // Game continues, will receive new question
+        // Game continues - auto-load next question with round increment
         correctGuessesThisRound = [];
+        loadNewQuestion(true); // Increment round when continuing from summary
     });
     
     socket.on('gameState:update', (data) => {
@@ -558,6 +560,12 @@ function setupEventListeners() {
         }
     });
     hostStartGameBtn.addEventListener('click', startGame);
+    
+    // Setup Help button - switch to help tab
+    hostSetupHelpBtn.addEventListener('click', () => {
+        showGameControls(); // Show the game tabs
+        switchTab('help'); // Switch to help tab
+    });
     
     // Navigation
     hostNavSetupBtn.addEventListener('click', () => {
@@ -721,7 +729,7 @@ function updateAnswerPreview() {
 }
 
 // Load new question
-function loadNewQuestion() {
+function loadNewQuestion(incrementRound = false) {
     if (gameData.length === 0) {
         alert('No questions loaded');
         return;
@@ -751,7 +759,7 @@ function loadNewQuestion() {
     revealedAnswers = [];
     roundPointsEarned = 0;
     
-    socket.emit('newQuestion', { question });
+    socket.emit('newQuestion', { question, incrementRound });
     
     // Update local UI
     hostQuestionText.textContent = question.question;

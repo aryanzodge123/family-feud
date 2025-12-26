@@ -357,6 +357,7 @@ const summaryWinningTeam = document.getElementById('summary-winning-team');
 const summaryPointsValue = document.getElementById('summary-points-value');
 const summaryQuestion = document.getElementById('summary-question');
 const summaryCorrectAnswers = document.getElementById('summary-correct-answers');
+const summaryMissedAnswers = document.getElementById('summary-missed-answers');
 const summaryAnswersFound = document.getElementById('summary-answers-found');
 const summaryStrikes = document.getElementById('summary-strikes');
 const summaryTeam1Name = document.getElementById('summary-team1-name');
@@ -947,13 +948,41 @@ function initDisplaySocket() {
         // Update correct answers list
         if (correctGuessesThisRound.length > 0) {
             summaryCorrectAnswers.innerHTML = correctGuessesThisRound.map(guess => `
-                <div class="stats-answer-item">
+                <div class="stats-answer-item correct">
+                    <span class="stats-answer-rank">#${guess.rank || '?'}</span>
                     <span class="stats-answer-text">${escapeHtml(guess.answer)}</span>
                     <span class="stats-answer-points">${guess.points} pts</span>
                 </div>
             `).join('');
         } else {
             summaryCorrectAnswers.innerHTML = '<div class="stats-no-answers">No answers were guessed correctly</div>';
+        }
+        
+        // Update missed answers list (use data from server if available)
+        const allAnswers = data.allAnswers || (currentQuestion ? currentQuestion.answers : []);
+        const serverRevealedAnswers = data.revealedAnswers || revealedAnswers;
+        
+        if (allAnswers.length > 0) {
+            const missedAnswers = allAnswers
+                .map((answer, index) => ({
+                    ...answer,
+                    rank: index + 1
+                }))
+                .filter((answer, index) => !serverRevealedAnswers.includes(index));
+            
+            if (missedAnswers.length > 0) {
+                summaryMissedAnswers.innerHTML = missedAnswers.map(answer => `
+                    <div class="stats-answer-item missed">
+                        <span class="stats-answer-rank">#${answer.rank}</span>
+                        <span class="stats-answer-text">${escapeHtml(answer.answer)}</span>
+                        <span class="stats-answer-points">${answer.points} pts</span>
+                    </div>
+                `).join('');
+            } else {
+                summaryMissedAnswers.innerHTML = '<div class="stats-no-answers stats-all-found">All answers were found! 🎉</div>';
+            }
+        } else {
+            summaryMissedAnswers.innerHTML = '';
         }
         
         // Update totals
@@ -1217,9 +1246,7 @@ function openTutorialFromQr() {
 let previousScreen = null;
 
 function openTutorialOverlay() {
-    // Don't open tutorial from login screen or in display mode
-    if (isDisplayMode) return;
-    
+    // Don't open tutorial from login screen
     if (loginScreen.style.display !== 'none' && loginScreen.style.display !== '') {
         return;
     }
@@ -1236,6 +1263,8 @@ function openTutorialOverlay() {
         previousScreen = 'qr';
     } else if (setupScreen.style.display === 'flex') {
         previousScreen = 'setup';
+    } else if (roundSummaryScreen.style.display === 'flex') {
+        previousScreen = 'roundSummary';
     } else if (gameContainer.style.display !== 'none' && gameContainer.style.display !== '') {
         previousScreen = 'game';
     } else if (endScreen.style.display === 'flex') {
@@ -1250,9 +1279,15 @@ function openTutorialOverlay() {
     setupScreen.style.display = 'none';
     gameContainer.style.display = 'none';
     endScreen.style.display = 'none';
+    roundSummaryScreen.style.display = 'none';
     
     // Show tutorial
     tutorialScreen.style.display = 'flex';
+    
+    // Auto-switch to appropriate tab based on mode
+    if (isDisplayMode) {
+        switchTutorialMode('display');
+    }
     
     // Change continue button behavior based on where we came from
     if (previousScreen === 'mode' || previousScreen === 'qr') {
@@ -1264,8 +1299,8 @@ function openTutorialOverlay() {
     }
     
     // Show/hide back to mode button based on context
-    if (previousScreen === 'mode' || previousScreen === 'qr') {
-        backToModeFromTutorialBtn.style.display = 'none'; // Hide since continue goes back to mode
+    if (previousScreen === 'mode' || previousScreen === 'qr' || isDisplayMode) {
+        backToModeFromTutorialBtn.style.display = 'none'; // Hide in these cases
     } else {
         backToModeFromTutorialBtn.style.display = 'block';
     }
@@ -1291,12 +1326,19 @@ function handleContinueFromTutorial() {
         qrScreen.style.display = 'flex';
     } else if (previousScreen === 'setup') {
         setupScreen.style.display = 'flex';
+    } else if (previousScreen === 'roundSummary') {
+        roundSummaryScreen.style.display = 'flex';
     } else if (previousScreen === 'game') {
         gameContainer.style.display = 'block';
     } else if (previousScreen === 'end') {
         endScreen.style.display = 'flex';
     } else {
-        setupScreen.style.display = 'flex';
+        // Default: go back to appropriate screen based on mode
+        if (isDisplayMode) {
+            gameContainer.style.display = 'block';
+        } else {
+            setupScreen.style.display = 'flex';
+        }
     }
     
     // Reset button text and previous screen tracker
@@ -1822,10 +1864,11 @@ async function checkPlayerAnswer() {
                 roundPointsEarned += points;
                 pointsInput.value = roundPointsEarned;
                 
-                // Track this correct guess for round summary
+                // Track this correct guess for round summary (rank is 1-indexed position)
                 correctGuessesThisRound.push({
                     answer: matchedAnswerText,
-                    points: points
+                    points: points,
+                    rank: matchedIndex + 1
                 });
             } else if (matchedIndex !== -1) {
                 // Already revealed - still log as correct but note it
@@ -1870,7 +1913,7 @@ async function checkPlayerAnswer() {
 }
 
 // Load a new question
-function loadNewQuestion() {
+function loadNewQuestion(incrementRound = false) {
     if (gameData.length === 0) {
         alert('No questions loaded. Please make sure questions.csv exists and is properly formatted.');
         return;
@@ -1883,8 +1926,8 @@ function loadNewQuestion() {
         return;
     }
     
-    // Increment round if not first question
-    if (currentQuestion !== null) {
+    // Increment round only when explicitly requested (from Next Round flow)
+    if (incrementRound && currentQuestion !== null) {
         currentRound++;
         currentRoundEl.textContent = currentRound;
     }
@@ -2089,13 +2132,42 @@ function showRoundSummary() {
     // Update correct answers list
     if (correctGuessesThisRound.length > 0) {
         summaryCorrectAnswers.innerHTML = correctGuessesThisRound.map(guess => `
-            <div class="stats-answer-item">
+            <div class="stats-answer-item correct">
+                <span class="stats-answer-rank">#${guess.rank || '?'}</span>
                 <span class="stats-answer-text">${escapeHtml(guess.answer)}</span>
                 <span class="stats-answer-points">${guess.points} pts</span>
             </div>
         `).join('');
     } else {
         summaryCorrectAnswers.innerHTML = '<div class="stats-no-answers">No answers were guessed correctly</div>';
+    }
+    
+    // Update missed answers list
+    if (currentQuestion) {
+        // Get all correct answer texts (lowercase for comparison)
+        const correctAnswerTexts = correctGuessesThisRound.map(g => g.answer.toLowerCase());
+        
+        // Find all answers that weren't guessed (by checking revealedAnswers)
+        const missedAnswers = currentQuestion.answers
+            .map((answer, index) => ({
+                ...answer,
+                rank: index + 1 // Position in the sorted list (1-based)
+            }))
+            .filter((answer, index) => !revealedAnswers.includes(index));
+        
+        if (missedAnswers.length > 0) {
+            summaryMissedAnswers.innerHTML = missedAnswers.map(answer => `
+                <div class="stats-answer-item missed">
+                    <span class="stats-answer-rank">#${answer.rank}</span>
+                    <span class="stats-answer-text">${escapeHtml(answer.answer)}</span>
+                    <span class="stats-answer-points">${answer.points} pts</span>
+                </div>
+            `).join('');
+        } else {
+            summaryMissedAnswers.innerHTML = '<div class="stats-no-answers stats-all-found">All answers were found! 🎉</div>';
+        }
+    } else {
+        summaryMissedAnswers.innerHTML = '';
     }
     
     // Update totals
@@ -2147,7 +2219,7 @@ function continueFromSummary() {
         showEndScreen();
     } else {
         gameContainer.style.display = 'block';
-        loadNewQuestion();
+        loadNewQuestion(true); // Increment round when going through proper Next Round flow
     }
 }
 

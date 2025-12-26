@@ -434,7 +434,7 @@ io.on('connection', (socket) => {
     });
     
     // Load new question
-    socket.on('newQuestion', ({ question }) => {
+    socket.on('newQuestion', ({ question, incrementRound = false }) => {
         if (!socket.isHost || !socket.roomCode) return;
         
         const room = getRoom(socket.roomCode);
@@ -449,7 +449,8 @@ io.on('connection', (socket) => {
         room.gameState.lastWinningTeam = 0;
         room.gameState.lastPointsAwarded = 0;
         
-        if (room.gameState.currentRound < room.gameState.totalRounds) {
+        // Only increment round when explicitly requested (from Next Round flow)
+        if (incrementRound && room.gameState.currentRound < room.gameState.totalRounds) {
             room.gameState.currentRound++;
         }
         
@@ -552,6 +553,8 @@ io.on('connection', (socket) => {
             pointsAwarded: points,
             question: room.gameState.currentQuestion ? room.gameState.currentQuestion.question : '',
             correctGuesses: guesses,
+            allAnswers: room.gameState.currentQuestion ? room.gameState.currentQuestion.answers : [],
+            revealedAnswers: room.gameState.revealedAnswers || [],
             totalAnswers: room.gameState.currentQuestion ? room.gameState.currentQuestion.answers.length : 0,
             strikes: room.gameState.strikes,
             team1Name: room.gameState.team1Name,
@@ -594,6 +597,8 @@ io.on('connection', (socket) => {
             pointsAwarded: room.gameState.lastPointsAwarded || roundPoints,
             question: room.gameState.currentQuestion ? room.gameState.currentQuestion.question : '',
             correctGuesses: guesses,
+            allAnswers: room.gameState.currentQuestion ? room.gameState.currentQuestion.answers : [],
+            revealedAnswers: room.gameState.revealedAnswers || [],
             totalAnswers: room.gameState.currentQuestion ? room.gameState.currentQuestion.answers.length : 0,
             strikes: room.gameState.strikes,
             team1Name: room.gameState.team1Name,

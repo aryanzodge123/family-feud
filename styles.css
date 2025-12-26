@@ -4052,17 +4052,61 @@ body {
 
 .stats-answer-item {
     display: flex;
-    justify-content: space-between;
     align-items: center;
+    gap: 12px;
     padding: 10px 15px;
     background: rgba(46, 204, 113, 0.15);
     border-radius: 8px;
     border-left: 4px solid #2ecc71;
 }
 
+.stats-answer-item.correct {
+    background: rgba(46, 204, 113, 0.15);
+    border-left-color: #2ecc71;
+}
+
+.stats-answer-item.missed {
+    background: rgba(231, 76, 60, 0.15);
+    border-left-color: #e74c3c;
+}
+
+.stats-answer-rank {
+    background: rgba(255, 255, 255, 0.2);
+    color: #fff;
+    font-weight: 700;
+    font-size: 0.85rem;
+    padding: 4px 8px;
+    border-radius: 5px;
+    min-width: 32px;
+    text-align: center;
+}
+
+.stats-answer-item.missed .stats-answer-rank {
+    background: rgba(231, 76, 60, 0.3);
+}
+
+.stats-answer-item.correct .stats-answer-rank {
+    background: rgba(46, 204, 113, 0.3);
+}
+
 .stats-answer-text {
+    flex: 1;
     font-size: 1rem;
     color: #fff;
+    font-weight: 600;
+}
+
+.stats-answer-item.missed .stats-answer-text {
+    color: #f5b7b1;
+}
+
+.stats-answers-section.stats-missed .stats-subtitle {
+    color: #e74c3c;
+}
+
+.stats-no-answers.stats-all-found {
+    background: rgba(46, 204, 113, 0.2);
+    color: #2ecc71;
     font-weight: 600;
 }
 
