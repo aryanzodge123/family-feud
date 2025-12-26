@@ -3414,3 +3414,268 @@ body {
     }
 }
 
+/* ==========================================
+   MODE SELECTION SCREEN
+   ========================================== */
+
+.mode-screen {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 20px;
+}
+
+.mode-container {
+    text-align: center;
+    max-width: 600px;
+    width: 100%;
+}
+
+.mode-logo {
+    font-size: 3.5rem;
+    font-weight: 900;
+    letter-spacing: 6px;
+    background: linear-gradient(45deg, #ffd700, #ffed4e, #ffd700);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    text-shadow: 0 0 30px rgba(255, 215, 0, 0.5);
+    margin-bottom: 10px;
+    text-transform: uppercase;
+}
+
+.mode-subtitle {
+    font-size: 1.3rem;
+    color: #adb5bd;
+    margin-bottom: 40px;
+}
+
+.mode-options {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.mode-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 30px;
+    background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+    border: 3px solid #7f8c8d;
+    border-radius: 15px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4);
+}
+
+.mode-btn:hover {
+    transform: translateY(-5px);
+    border-color: #ffd700;
+    box-shadow: 0 12px 35px rgba(255, 215, 0, 0.3);
+}
+
+.mode-btn:active {
+    transform: translateY(-2px);
+}
+
+.mode-icon {
+    font-size: 3rem;
+    margin-bottom: 15px;
+}
+
+.mode-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #ffd700;
+    margin-bottom: 8px;
+}
+
+.mode-desc {
+    font-size: 0.95rem;
+    color: #adb5bd;
+    line-height: 1.4;
+}
+
+/* ==========================================
+   QR CODE SCREEN
+   ========================================== */
+
+.qr-screen {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 20px;
+}
+
+.qr-container {
+    text-align: center;
+    max-width: 500px;
+    width: 100%;
+}
+
+.qr-logo {
+    font-size: 2.5rem;
+    font-weight: 900;
+    letter-spacing: 4px;
+    background: linear-gradient(45deg, #ffd700, #ffed4e, #ffd700);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 10px;
+    text-transform: uppercase;
+}
+
+.qr-subtitle {
+    font-size: 1.2rem;
+    color: #adb5bd;
+    margin-bottom: 30px;
+}
+
+.qr-code-wrapper {
+    background: #fff;
+    padding: 20px;
+    border-radius: 15px;
+    display: inline-block;
+    margin-bottom: 25px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+}
+
+.qr-code-img {
+    display: block;
+    max-width: 260px;
+    height: auto;
+}
+
+.qr-loading {
+    color: #1a1a2e;
+    font-size: 1rem;
+    padding: 100px 40px;
+}
+
+.qr-info {
+    margin-bottom: 25px;
+}
+
+.qr-room-label {
+    font-size: 0.9rem;
+    color: #adb5bd;
+    margin-bottom: 5px;
+}
+
+.qr-room-code {
+    font-size: 2.5rem;
+    font-weight: 900;
+    letter-spacing: 8px;
+    color: #ffd700;
+    font-family: monospace;
+    margin-bottom: 10px;
+}
+
+.qr-host-url {
+    font-size: 0.8rem;
+    color: #7f8c8d;
+    word-break: break-all;
+}
+
+.qr-status {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 15px 25px;
+    background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+    border-radius: 10px;
+    margin-bottom: 25px;
+}
+
+.qr-status-indicator {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #7f8c8d;
+    transition: all 0.3s ease;
+}
+
+.qr-status-indicator.connected {
+    background: #2ecc71;
+    box-shadow: 0 0 10px #2ecc71;
+    animation: pulse-green 2s infinite;
+}
+
+@keyframes pulse-green {
+    0%, 100% {
+        box-shadow: 0 0 5px #2ecc71;
+    }
+    50% {
+        box-shadow: 0 0 15px #2ecc71;
+    }
+}
+
+#host-status-text {
+    font-size: 0.95rem;
+    color: #ecf0f1;
+}
+
+#back-to-mode-btn {
+    padding: 12px 25px;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #adb5bd;
+    background: transparent;
+    border: 2px solid #7f8c8d;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+#back-to-mode-btn:hover {
+    color: #fff;
+    border-color: #ffd700;
+    background: rgba(255, 215, 0, 0.1);
+}
+
+/* Mobile adjustments for mode/QR screens */
+@media (max-width: 600px) {
+    .mode-logo {
+        font-size: 2.5rem;
+        letter-spacing: 4px;
+    }
+    
+    .mode-subtitle {
+        font-size: 1.1rem;
+        margin-bottom: 30px;
+    }
+    
+    .mode-btn {
+        padding: 25px 20px;
+    }
+    
+    .mode-icon {
+        font-size: 2.5rem;
+    }
+    
+    .mode-title {
+        font-size: 1.3rem;
+    }
+    
+    .mode-desc {
+        font-size: 0.85rem;
+    }
+    
+    .qr-logo {
+        font-size: 2rem;
+    }
+    
+    .qr-room-code {
+        font-size: 2rem;
+        letter-spacing: 6px;
+    }
+    
+    .qr-code-img {
+        max-width: 220px;
+    }
+}
+

@@ -7,8 +7,58 @@
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+    <!-- Mode Selection Screen -->
+    <div id="mode-screen" class="mode-screen">
+        <div class="mode-container">
+            <h1 class="mode-logo">FAMILY FEUD</h1>
+            <p class="mode-subtitle">Select Game Mode</p>
+            
+            <div class="mode-options">
+                <button type="button" id="single-device-btn" class="mode-btn">
+                    <span class="mode-icon">🎮</span>
+                    <span class="mode-title">Single Device</span>
+                    <span class="mode-desc">Control and display on the same screen</span>
+                </button>
+                
+                <button type="button" id="display-mode-btn" class="mode-btn">
+                    <span class="mode-icon">📺</span>
+                    <span class="mode-title">Display Mode</span>
+                    <span class="mode-desc">This screen shows the game, host controls from phone</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- QR Code Screen (Display Mode) -->
+    <div id="qr-screen" class="qr-screen" style="display: none;">
+        <div class="qr-container">
+            <h1 class="qr-logo">FAMILY FEUD</h1>
+            <p class="qr-subtitle">Scan to Control the Game</p>
+            
+            <div class="qr-code-wrapper">
+                <img id="qr-code-img" class="qr-code-img" src="" alt="QR Code">
+                <div id="qr-loading" class="qr-loading">Generating QR Code...</div>
+            </div>
+            
+            <div class="qr-info">
+                <p class="qr-room-label">Room Code:</p>
+                <p class="qr-room-code" id="qr-room-code">------</p>
+                <p class="qr-host-url" id="qr-host-url"></p>
+            </div>
+            
+            <div class="qr-status">
+                <div class="qr-status-indicator" id="host-status-indicator"></div>
+                <span id="host-status-text">Waiting for host to connect...</span>
+            </div>
+            
+            <button type="button" id="back-to-mode-btn" class="back-btn">
+                ← Back to Mode Selection
+            </button>
+        </div>
+    </div>
+
     <!-- Login Screen -->
-    <div id="login-screen" class="login-screen">
+    <div id="login-screen" class="login-screen" style="display: none;">
         <div class="login-container">
             <h1 class="login-logo">FAMILY FEUD</h1>
             <p class="login-subtitle">Host Login</p>
@@ -223,14 +273,14 @@
         <!-- Answer Board with Timer and Entry Log -->
         <div class="game-board-wrapper">
             <!-- Timer Panel (Left) -->
-            <div class="timer-panel">
+            <div class="timer-panel" id="timer-panel-desktop">
                 <div class="timer-label">TIMER</div>
                 <div class="timer-display" id="timer-display">00:00</div>
-                <div class="timer-input-group">
+                <div class="timer-input-group" id="timer-controls-desktop">
                     <label for="timer-seconds">Seconds:</label>
                     <input type="number" id="timer-seconds" value="30" min="1" max="999">
                 </div>
-                <div class="timer-buttons">
+                <div class="timer-buttons" id="timer-buttons-desktop">
                     <button class="timer-btn timer-start" id="timer-start-btn">Start</button>
                     <button class="timer-btn timer-pause" id="timer-pause-btn">Pause</button>
                     <button class="timer-btn timer-reset" id="timer-reset-btn">Reset</button>
@@ -421,6 +471,8 @@
         <span class="help-icon">?</span>
     </button>
 
+    <!-- Socket.IO Client -->
+    <script src="/socket.io/socket.io.js"></script>
     <script src="script.js"></script>
 </body>
 </html>

@@ -2,6 +2,8 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
+const { Server } = require('socket.io');
+const QRCode = require('qrcode');
 
 // Load configuration - support both environment variables (production) and config.json (local dev)
 let OPENAI_API_KEY = process.env.OPENAI_API_KEY;
@@ -28,6 +30,64 @@ if (!OPENAI_API_KEY || OPENAI_API_KEY === 'YOUR_OPENAI_API_KEY_HERE') {
 
 // Use PORT from environment variable (required by hosting platforms) or default to 3000
 const PORT = process.env.PORT || 3000;
+
+// Host Password
+const HOST_PASSWORD = '654-SteveHarveyIsCool!-321';
+
+// Game rooms storage
+const gameRooms = new Map();
+
+// Generate a random room code
+function generateRoomCode() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let code = '';
+    for (let i = 0; i < 6; i++) {
+        code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return code;
+}
+
+// Create a new game room
+function createGameRoom() {
+    let roomCode = generateRoomCode();
+    // Ensure unique room code
+    while (gameRooms.has(roomCode)) {
+        roomCode = generateRoomCode();
+    }
+    
+    const room = {
+        code: roomCode,
+        displaySocketId: null,
+        hostSocketId: null,
+        createdAt: Date.now(),
+        gameState: {
+            screen: 'qr', // qr, tutorial, setup, game, end
+            team1Name: 'TEAM 1',
+            team2Name: 'TEAM 2',
+            team1Score: 0,
+            team2Score: 0,
+            totalRounds: 7,
+            currentRound: 1,
+            currentQuestion: null,
+            revealedAnswers: [],
+            strikes: 0,
+            timerSeconds: 30,
+            timerRunning: false,
+            timerCurrentSeconds: 0,
+            entryLog: [],
+            roundPointsEarned: 0,
+            usedQuestionIndices: []
+        }
+    };
+    
+    gameRooms.set(roomCode, room);
+    return room;
+}
+
+// Get room by code
+function getRoom(roomCode) {
+    return gameRooms.get(roomCode);
+}
 
 // Serve static files
 function serveStaticFile(filePath, res) {
@@ -193,7 +253,38 @@ const server = http.createServer((req, res) => {
                 res.end(JSON.stringify({ error: error.message }));
             }
         });
-    } else {
+    } 
+    // API endpoint to create a new game room
+    else if (url.pathname === '/api/create-room' && req.method === 'POST') {
+        const room = createGameRoom();
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ roomCode: room.code }));
+    }
+    // API endpoint to generate QR code
+    else if (url.pathname === '/api/qr-code' && req.method === 'GET') {
+        const roomCode = url.searchParams.get('room');
+        if (!roomCode) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Room code required' }));
+            return;
+        }
+        
+        // Construct the host URL
+        const protocol = req.headers['x-forwarded-proto'] || 'http';
+        const host = req.headers.host;
+        const hostUrl = `${protocol}://${host}/host.html?room=${roomCode}`;
+        
+        QRCode.toDataURL(hostUrl, { width: 300, margin: 2 }, (err, dataUrl) => {
+            if (err) {
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Failed to generate QR code' }));
+                return;
+            }
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ qrCode: dataUrl, hostUrl }));
+        });
+    }
+    else {
         // Serve static files
         let filePath = url.pathname === '/' ? '/index.html' : url.pathname;
         filePath = path.join(__dirname, filePath);
@@ -209,6 +300,468 @@ const server = http.createServer((req, res) => {
     }
 });
 
+// Initialize Socket.IO
+const io = new Server(server, {
+    cors: {
+        origin: '*',
+        methods: ['GET', 'POST']
+    }
+});
+
+// Socket.IO connection handling
+io.on('connection', (socket) => {
+    console.log('Client connected:', socket.id);
+    
+    // Display joins a room
+    socket.on('display:join', (roomCode) => {
+        const room = getRoom(roomCode);
+        if (!room) {
+            socket.emit('error', { message: 'Room not found' });
+            return;
+        }
+        
+        room.displaySocketId = socket.id;
+        socket.join(roomCode);
+        socket.roomCode = roomCode;
+        socket.isDisplay = true;
+        
+        console.log(`Display joined room ${roomCode}`);
+        socket.emit('display:joined', { roomCode, gameState: room.gameState });
+    });
+    
+    // Host authenticates and joins a room
+    socket.on('host:authenticate', ({ roomCode, password }) => {
+        const room = getRoom(roomCode);
+        if (!room) {
+            socket.emit('host:authResult', { success: false, error: 'Room not found' });
+            return;
+        }
+        
+        if (password !== HOST_PASSWORD) {
+            socket.emit('host:authResult', { success: false, error: 'Invalid password' });
+            return;
+        }
+        
+        // Check if another host is already connected
+        if (room.hostSocketId && room.hostSocketId !== socket.id) {
+            const existingHostSocket = io.sockets.sockets.get(room.hostSocketId);
+            if (existingHostSocket) {
+                // Notify the new host that there's an existing host
+                socket.emit('host:authResult', { 
+                    success: false, 
+                    error: 'Another host is already connected',
+                    canTakeOver: true 
+                });
+                return;
+            }
+        }
+        
+        room.hostSocketId = socket.id;
+        socket.join(roomCode);
+        socket.roomCode = roomCode;
+        socket.isHost = true;
+        
+        console.log(`Host authenticated for room ${roomCode}`);
+        socket.emit('host:authResult', { success: true, gameState: room.gameState });
+        
+        // Notify display that host connected
+        io.to(roomCode).emit('host:connected');
+    });
+    
+    // Host takes over from existing host
+    socket.on('host:takeOver', ({ roomCode, password }) => {
+        const room = getRoom(roomCode);
+        if (!room) {
+            socket.emit('host:authResult', { success: false, error: 'Room not found' });
+            return;
+        }
+        
+        if (password !== HOST_PASSWORD) {
+            socket.emit('host:authResult', { success: false, error: 'Invalid password' });
+            return;
+        }
+        
+        // Disconnect existing host
+        if (room.hostSocketId) {
+            const existingHostSocket = io.sockets.sockets.get(room.hostSocketId);
+            if (existingHostSocket) {
+                existingHostSocket.emit('host:disconnected', { reason: 'Another host took over' });
+                existingHostSocket.leave(roomCode);
+            }
+        }
+        
+        room.hostSocketId = socket.id;
+        socket.join(roomCode);
+        socket.roomCode = roomCode;
+        socket.isHost = true;
+        
+        console.log(`Host took over room ${roomCode}`);
+        socket.emit('host:authResult', { success: true, gameState: room.gameState });
+        io.to(roomCode).emit('host:connected');
+    });
+    
+    // Navigate to a screen
+    socket.on('navigate', ({ screen }) => {
+        if (!socket.isHost || !socket.roomCode) return;
+        
+        const room = getRoom(socket.roomCode);
+        if (!room) return;
+        
+        room.gameState.screen = screen;
+        io.to(socket.roomCode).emit('gameState:update', { screen });
+    });
+    
+    // Start game with settings
+    socket.on('startGame', ({ team1Name, team2Name, totalRounds }) => {
+        if (!socket.isHost || !socket.roomCode) return;
+        
+        const room = getRoom(socket.roomCode);
+        if (!room) return;
+        
+        room.gameState.team1Name = team1Name || 'TEAM 1';
+        room.gameState.team2Name = team2Name || 'TEAM 2';
+        room.gameState.totalRounds = totalRounds || 7;
+        room.gameState.currentRound = 1;
+        room.gameState.team1Score = 0;
+        room.gameState.team2Score = 0;
+        room.gameState.screen = 'game';
+        room.gameState.usedQuestionIndices = [];
+        
+        io.to(socket.roomCode).emit('game:started', room.gameState);
+    });
+    
+    // Load new question
+    socket.on('newQuestion', ({ question }) => {
+        if (!socket.isHost || !socket.roomCode) return;
+        
+        const room = getRoom(socket.roomCode);
+        if (!room) return;
+        
+        room.gameState.currentQuestion = question;
+        room.gameState.revealedAnswers = [];
+        room.gameState.strikes = 0;
+        room.gameState.entryLog = [];
+        room.gameState.roundPointsEarned = 0;
+        
+        if (room.gameState.currentRound < room.gameState.totalRounds) {
+            room.gameState.currentRound++;
+        }
+        
+        io.to(socket.roomCode).emit('question:loaded', {
+            question: question,
+            currentRound: room.gameState.currentRound,
+            totalRounds: room.gameState.totalRounds
+        });
+    });
+    
+    // Reveal answer
+    socket.on('revealAnswer', ({ index }) => {
+        if (!socket.isHost || !socket.roomCode) return;
+        
+        const room = getRoom(socket.roomCode);
+        if (!room) return;
+        
+        if (!room.gameState.revealedAnswers.includes(index)) {
+            room.gameState.revealedAnswers.push(index);
+        }
+        
+        io.to(socket.roomCode).emit('answer:revealed', { index });
+    });
+    
+    // Add strike
+    socket.on('addStrike', () => {
+        if (!socket.isHost || !socket.roomCode) return;
+        
+        const room = getRoom(socket.roomCode);
+        if (!room) return;
+        
+        if (room.gameState.strikes < 3) {
+            room.gameState.strikes++;
+        }
+        
+        io.to(socket.roomCode).emit('strike:updated', { strikes: room.gameState.strikes });
+    });
+    
+    // Remove strike
+    socket.on('removeStrike', () => {
+        if (!socket.isHost || !socket.roomCode) return;
+        
+        const room = getRoom(socket.roomCode);
+        if (!room) return;
+        
+        if (room.gameState.strikes > 0) {
+            room.gameState.strikes--;
+        }
+        
+        io.to(socket.roomCode).emit('strike:updated', { strikes: room.gameState.strikes });
+    });
+    
+    // Add points
+    socket.on('addPoints', ({ team, points }) => {
+        if (!socket.isHost || !socket.roomCode) return;
+        
+        const room = getRoom(socket.roomCode);
+        if (!room) return;
+        
+        if (team === 1) {
+            room.gameState.team1Score += points;
+        } else {
+            room.gameState.team2Score += points;
+        }
+        
+        io.to(socket.roomCode).emit('points:updated', {
+            team1Score: room.gameState.team1Score,
+            team2Score: room.gameState.team2Score
+        });
+    });
+    
+    // Check answer (AI)
+    socket.on('checkAnswer', async ({ playerAnswer }) => {
+        if (!socket.isHost || !socket.roomCode) return;
+        
+        const room = getRoom(socket.roomCode);
+        if (!room || !room.gameState.currentQuestion) return;
+        
+        const allAnswers = room.gameState.currentQuestion.answers.map(a => a.text);
+        
+        try {
+            const response = await callOpenAI(
+                room.gameState.currentQuestion.question,
+                allAnswers,
+                playerAnswer
+            );
+            
+            const chatResponse = response.choices[0].message.content.trim();
+            const cleanedResponse = chatResponse.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+            const jsonResponse = JSON.parse(cleanedResponse);
+            
+            // Add to entry log
+            const isCorrect = jsonResponse.match && jsonResponse.matchedAnswer;
+            room.gameState.entryLog.push({
+                entry: playerAnswer,
+                isCorrect,
+                timestamp: new Date()
+            });
+            
+            // Send result to host only
+            socket.emit('answer:result', {
+                playerAnswer,
+                ...jsonResponse
+            });
+            
+            // If correct, find the answer index and reveal it
+            if (isCorrect) {
+                const matchedIndex = room.gameState.currentQuestion.answers.findIndex(
+                    ans => ans.text.toLowerCase() === jsonResponse.matchedAnswer.toLowerCase()
+                );
+                
+                if (matchedIndex !== -1 && !room.gameState.revealedAnswers.includes(matchedIndex)) {
+                    room.gameState.revealedAnswers.push(matchedIndex);
+                    const points = room.gameState.currentQuestion.answers[matchedIndex].points;
+                    room.gameState.roundPointsEarned += points;
+                    
+                    // Notify display to show correct feedback and reveal
+                    io.to(socket.roomCode).emit('answer:correct', {
+                        index: matchedIndex,
+                        points,
+                        roundPointsEarned: room.gameState.roundPointsEarned
+                    });
+                }
+            } else {
+                // Add strike
+                if (room.gameState.strikes < 3) {
+                    room.gameState.strikes++;
+                }
+                
+                // Notify display to show incorrect feedback
+                io.to(socket.roomCode).emit('answer:incorrect', {
+                    strikes: room.gameState.strikes
+                });
+            }
+            
+            // Update entry log on display
+            io.to(socket.roomCode).emit('entryLog:updated', {
+                entryLog: room.gameState.entryLog
+            });
+            
+        } catch (error) {
+            console.error('Error checking answer:', error);
+            socket.emit('answer:error', { error: error.message });
+        }
+    });
+    
+    // Timer controls
+    socket.on('timer:start', ({ seconds }) => {
+        if (!socket.isHost || !socket.roomCode) return;
+        
+        const room = getRoom(socket.roomCode);
+        if (!room) return;
+        
+        room.gameState.timerRunning = true;
+        room.gameState.timerCurrentSeconds = seconds || room.gameState.timerSeconds;
+        
+        io.to(socket.roomCode).emit('timer:started', {
+            seconds: room.gameState.timerCurrentSeconds
+        });
+    });
+    
+    socket.on('timer:pause', () => {
+        if (!socket.isHost || !socket.roomCode) return;
+        
+        const room = getRoom(socket.roomCode);
+        if (!room) return;
+        
+        room.gameState.timerRunning = false;
+        
+        io.to(socket.roomCode).emit('timer:paused');
+    });
+    
+    socket.on('timer:reset', ({ seconds }) => {
+        if (!socket.isHost || !socket.roomCode) return;
+        
+        const room = getRoom(socket.roomCode);
+        if (!room) return;
+        
+        room.gameState.timerRunning = false;
+        room.gameState.timerSeconds = seconds || 30;
+        room.gameState.timerCurrentSeconds = room.gameState.timerSeconds;
+        
+        io.to(socket.roomCode).emit('timer:reset', {
+            seconds: room.gameState.timerSeconds
+        });
+    });
+    
+    socket.on('timer:update', ({ seconds }) => {
+        if (!socket.isHost || !socket.roomCode) return;
+        
+        const room = getRoom(socket.roomCode);
+        if (!room) return;
+        
+        room.gameState.timerCurrentSeconds = seconds;
+        
+        io.to(socket.roomCode).emit('timer:tick', { seconds });
+    });
+    
+    socket.on('timer:finished', () => {
+        if (!socket.isHost || !socket.roomCode) return;
+        
+        io.to(socket.roomCode).emit('timer:timesUp');
+    });
+    
+    // Reset round
+    socket.on('resetRound', () => {
+        if (!socket.isHost || !socket.roomCode) return;
+        
+        const room = getRoom(socket.roomCode);
+        if (!room) return;
+        
+        room.gameState.revealedAnswers = [];
+        room.gameState.strikes = 0;
+        room.gameState.entryLog = [];
+        room.gameState.roundPointsEarned = 0;
+        
+        io.to(socket.roomCode).emit('round:reset');
+    });
+    
+    // Reset game
+    socket.on('resetGame', () => {
+        if (!socket.isHost || !socket.roomCode) return;
+        
+        const room = getRoom(socket.roomCode);
+        if (!room) return;
+        
+        room.gameState = {
+            screen: 'setup',
+            team1Name: 'TEAM 1',
+            team2Name: 'TEAM 2',
+            team1Score: 0,
+            team2Score: 0,
+            totalRounds: 7,
+            currentRound: 1,
+            currentQuestion: null,
+            revealedAnswers: [],
+            strikes: 0,
+            timerSeconds: 30,
+            timerRunning: false,
+            timerCurrentSeconds: 0,
+            entryLog: [],
+            roundPointsEarned: 0,
+            usedQuestionIndices: []
+        };
+        
+        io.to(socket.roomCode).emit('game:reset', room.gameState);
+    });
+    
+    // End game
+    socket.on('endGame', () => {
+        if (!socket.isHost || !socket.roomCode) return;
+        
+        const room = getRoom(socket.roomCode);
+        if (!room) return;
+        
+        room.gameState.screen = 'end';
+        
+        io.to(socket.roomCode).emit('game:ended', {
+            team1Name: room.gameState.team1Name,
+            team2Name: room.gameState.team2Name,
+            team1Score: room.gameState.team1Score,
+            team2Score: room.gameState.team2Score
+        });
+    });
+    
+    // Clear entry log
+    socket.on('clearEntryLog', () => {
+        if (!socket.isHost || !socket.roomCode) return;
+        
+        const room = getRoom(socket.roomCode);
+        if (!room) return;
+        
+        room.gameState.entryLog = [];
+        
+        io.to(socket.roomCode).emit('entryLog:cleared');
+    });
+    
+    // Request full game state sync
+    socket.on('requestState', () => {
+        if (!socket.roomCode) return;
+        
+        const room = getRoom(socket.roomCode);
+        if (!room) return;
+        
+        socket.emit('gameState:full', room.gameState);
+    });
+    
+    // Handle disconnection
+    socket.on('disconnect', () => {
+        console.log('Client disconnected:', socket.id);
+        
+        if (socket.roomCode) {
+            const room = getRoom(socket.roomCode);
+            if (room) {
+                if (socket.isDisplay) {
+                    room.displaySocketId = null;
+                    io.to(socket.roomCode).emit('display:disconnected');
+                }
+                if (socket.isHost) {
+                    room.hostSocketId = null;
+                    io.to(socket.roomCode).emit('host:disconnected', { reason: 'Host disconnected' });
+                }
+            }
+        }
+    });
+});
+
+// Clean up old rooms periodically (every hour)
+setInterval(() => {
+    const oneHourAgo = Date.now() - (60 * 60 * 1000);
+    for (const [code, room] of gameRooms.entries()) {
+        if (room.createdAt < oneHourAgo && !room.displaySocketId && !room.hostSocketId) {
+            gameRooms.delete(code);
+            console.log(`Cleaned up old room: ${code}`);
+        }
+    }
+}, 60 * 60 * 1000);
+
 server.listen(PORT, () => {
     console.log(`Family Feud server running on port ${PORT}`);
     if (process.env.OPENAI_API_KEY) {
@@ -216,5 +769,5 @@ server.listen(PORT, () => {
     } else {
         console.log('Using OpenAI API key from config.json');
     }
+    console.log('Socket.IO enabled for remote host control');
 });
-

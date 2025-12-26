@@ -15,6 +15,11 @@ let currentRound = 1;
 let usedQuestionIndices = []; // Track which questions have been used
 let roundPointsEarned = 0; // Track points earned from correct entries in current round
 
+// Display Mode State
+let isDisplayMode = false;
+let socket = null;
+let roomCode = null;
+
 // Load questions from CSV file
 async function loadQuestionsFromCSV() {
     try {
@@ -275,6 +280,21 @@ function showTimesUp() {
     }, 4000);
 }
 
+// Mode Selection Screen Elements
+const modeScreen = document.getElementById('mode-screen');
+const singleDeviceBtn = document.getElementById('single-device-btn');
+const displayModeBtn = document.getElementById('display-mode-btn');
+
+// QR Code Screen Elements
+const qrScreen = document.getElementById('qr-screen');
+const qrCodeImg = document.getElementById('qr-code-img');
+const qrLoading = document.getElementById('qr-loading');
+const qrRoomCode = document.getElementById('qr-room-code');
+const qrHostUrl = document.getElementById('qr-host-url');
+const hostStatusIndicator = document.getElementById('host-status-indicator');
+const hostStatusText = document.getElementById('host-status-text');
+const backToModeBtn = document.getElementById('back-to-mode-btn');
+
 // Login Screen Elements
 const loginScreen = document.getElementById('login-screen');
 const passwordInput = document.getElementById('password-input');
@@ -348,6 +368,9 @@ const timerSecondsInput = document.getElementById('timer-seconds');
 const timerStartBtn = document.getElementById('timer-start-btn');
 const timerPauseBtn = document.getElementById('timer-pause-btn');
 const timerResetBtn = document.getElementById('timer-reset-btn');
+const timerPanelDesktop = document.getElementById('timer-panel-desktop');
+const timerControlsDesktop = document.getElementById('timer-controls-desktop');
+const timerButtonsDesktop = document.getElementById('timer-buttons-desktop');
 
 // Mobile Timer Elements
 const timerToggleBtn = document.getElementById('timer-toggle-btn');
@@ -380,6 +403,11 @@ let entryLog = [];
 async function init() {
     // Load questions from CSV first
     await loadQuestionsFromCSV();
+    
+    // Mode selection event listeners
+    singleDeviceBtn.addEventListener('click', startSingleDeviceMode);
+    displayModeBtn.addEventListener('click', startDisplayMode);
+    backToModeBtn.addEventListener('click', backToModeSelection);
     
     // Login screen event listeners
     loginBtn.addEventListener('click', handleLogin);
@@ -415,43 +443,75 @@ async function init() {
         });
     });
     
-    // Add click handlers to answer slots for direct reveal
+    // Add click handlers to answer slots for direct reveal (only in single device mode)
     answerSlots.forEach((slot, index) => {
         slot.addEventListener('click', () => {
-            if (currentQuestion && !revealedAnswers.includes(index)) {
+            if (!isDisplayMode && currentQuestion && !revealedAnswers.includes(index)) {
                 revealAnswer(index);
             }
         });
     });
 
-    // Button event listeners
-    newQuestionBtn.addEventListener('click', loadNewQuestion);
-    revealAnswerBtn.addEventListener('click', revealNextAnswer);
-    addStrikeBtn.addEventListener('click', addStrike);
-    removeStrikeBtn.addEventListener('click', removeStrike);
-    addPointsBtn.addEventListener('click', addPoints);
-    resetRoundBtn.addEventListener('click', resetRound);
-    resetGameBtn.addEventListener('click', resetGame);
-    endGameBtn.addEventListener('click', endGameEarly);
-    checkAnswerBtn.addEventListener('click', checkPlayerAnswer);
+    // Button event listeners (only active in single device mode)
+    newQuestionBtn.addEventListener('click', () => {
+        if (!isDisplayMode) loadNewQuestion();
+    });
+    revealAnswerBtn.addEventListener('click', () => {
+        if (!isDisplayMode) revealNextAnswer();
+    });
+    addStrikeBtn.addEventListener('click', () => {
+        if (!isDisplayMode) addStrike();
+    });
+    removeStrikeBtn.addEventListener('click', () => {
+        if (!isDisplayMode) removeStrike();
+    });
+    addPointsBtn.addEventListener('click', () => {
+        if (!isDisplayMode) addPoints();
+    });
+    resetRoundBtn.addEventListener('click', () => {
+        if (!isDisplayMode) resetRound();
+    });
+    resetGameBtn.addEventListener('click', () => {
+        if (!isDisplayMode) resetGame();
+    });
+    endGameBtn.addEventListener('click', () => {
+        if (!isDisplayMode) endGameEarly();
+    });
+    checkAnswerBtn.addEventListener('click', () => {
+        if (!isDisplayMode) checkPlayerAnswer();
+    });
     
-    // Timer event listeners
-    timerStartBtn.addEventListener('click', startTimer);
-    timerPauseBtn.addEventListener('click', pauseTimer);
-    timerResetBtn.addEventListener('click', resetTimer);
+    // Timer event listeners (only active in single device mode)
+    timerStartBtn.addEventListener('click', () => {
+        if (!isDisplayMode) startTimer();
+    });
+    timerPauseBtn.addEventListener('click', () => {
+        if (!isDisplayMode) pauseTimer();
+    });
+    timerResetBtn.addEventListener('click', () => {
+        if (!isDisplayMode) resetTimer();
+    });
     
     // Mobile timer event listeners
     timerToggleBtn.addEventListener('click', toggleTimerPanel);
-    mobileTimerStartBtn.addEventListener('click', startTimer);
-    mobileTimerPauseBtn.addEventListener('click', pauseTimer);
-    mobileTimerResetBtn.addEventListener('click', resetTimer);
+    mobileTimerStartBtn.addEventListener('click', () => {
+        if (!isDisplayMode) startTimer();
+    });
+    mobileTimerPauseBtn.addEventListener('click', () => {
+        if (!isDisplayMode) pauseTimer();
+    });
+    mobileTimerResetBtn.addEventListener('click', () => {
+        if (!isDisplayMode) resetTimer();
+    });
     
     // Sync timer inputs between desktop and mobile (use 'input' for real-time sync)
     timerSecondsInput.addEventListener('input', syncTimerInputs);
     mobileTimerSecondsInput.addEventListener('input', syncTimerInputs);
     
     // Entry log event listener
-    clearLogBtn.addEventListener('click', clearEntryLog);
+    clearLogBtn.addEventListener('click', () => {
+        if (!isDisplayMode) clearEntryLog();
+    });
     
     // Host panel toggle event listener
     hostToggleBtn.addEventListener('click', toggleHostPanel);
@@ -461,7 +521,9 @@ async function init() {
     
     // Entry log panel toggle event listener
     entryLogToggleBtn.addEventListener('click', toggleEntryLogPanel);
-    mobileClearLogBtn.addEventListener('click', clearEntryLog);
+    mobileClearLogBtn.addEventListener('click', () => {
+        if (!isDisplayMode) clearEntryLog();
+    });
     
     // Fullscreen toggle event listener
     fullscreenBtn.addEventListener('click', toggleFullscreen);
@@ -473,10 +535,410 @@ async function init() {
     
     // Allow Enter key to submit answer
     playerAnswerInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
+        if (e.key === 'Enter' && !isDisplayMode) {
             checkPlayerAnswer();
         }
     });
+}
+
+// Start Single Device Mode
+function startSingleDeviceMode() {
+    isDisplayMode = false;
+    modeScreen.style.display = 'none';
+    loginScreen.style.display = 'flex';
+}
+
+// Start Display Mode
+async function startDisplayMode() {
+    isDisplayMode = true;
+    modeScreen.style.display = 'none';
+    qrScreen.style.display = 'flex';
+    
+    // Create a new room
+    try {
+        const response = await fetch('/api/create-room', { method: 'POST' });
+        const data = await response.json();
+        roomCode = data.roomCode;
+        
+        qrRoomCode.textContent = roomCode;
+        
+        // Get QR code
+        const qrResponse = await fetch(`/api/qr-code?room=${roomCode}`);
+        const qrData = await qrResponse.json();
+        
+        qrCodeImg.src = qrData.qrCode;
+        qrCodeImg.style.display = 'block';
+        qrLoading.style.display = 'none';
+        qrHostUrl.textContent = qrData.hostUrl;
+        
+        // Initialize socket connection
+        initDisplaySocket();
+        
+    } catch (error) {
+        console.error('Error creating room:', error);
+        qrLoading.textContent = 'Error creating room. Please try again.';
+    }
+}
+
+// Back to mode selection
+function backToModeSelection() {
+    if (socket) {
+        socket.disconnect();
+        socket = null;
+    }
+    roomCode = null;
+    isDisplayMode = false;
+    
+    qrScreen.style.display = 'none';
+    modeScreen.style.display = 'flex';
+    
+    // Reset QR screen
+    qrCodeImg.style.display = 'none';
+    qrLoading.style.display = 'block';
+    qrLoading.textContent = 'Generating QR Code...';
+    qrRoomCode.textContent = '------';
+    qrHostUrl.textContent = '';
+    hostStatusIndicator.className = 'qr-status-indicator';
+    hostStatusText.textContent = 'Waiting for host to connect...';
+}
+
+// Initialize Socket.IO for display mode
+function initDisplaySocket() {
+    socket = io();
+    
+    socket.on('connect', () => {
+        console.log('Display connected to server');
+        socket.emit('display:join', roomCode);
+    });
+    
+    socket.on('display:joined', (data) => {
+        console.log('Joined room:', data.roomCode);
+        hostStatusText.textContent = 'Waiting for host to connect...';
+    });
+    
+    socket.on('host:connected', () => {
+        hostStatusIndicator.classList.add('connected');
+        hostStatusText.textContent = 'Host connected!';
+    });
+    
+    socket.on('host:disconnected', () => {
+        hostStatusIndicator.classList.remove('connected');
+        hostStatusText.textContent = 'Host disconnected. Waiting for reconnection...';
+    });
+    
+    socket.on('game:started', (gameState) => {
+        // Hide QR screen, show game
+        qrScreen.style.display = 'none';
+        gameContainer.style.display = 'block';
+        
+        // Apply game state
+        team1Name = gameState.team1Name;
+        team2Name = gameState.team2Name;
+        totalRounds = gameState.totalRounds;
+        currentRound = gameState.currentRound;
+        team1Score = gameState.team1Score;
+        team2Score = gameState.team2Score;
+        
+        // Update UI
+        team1DisplayName.textContent = team1Name;
+        team2DisplayName.textContent = team2Name;
+        teamSelectOption1.textContent = team1Name;
+        teamSelectOption2.textContent = team2Name;
+        currentRoundEl.textContent = currentRound;
+        totalRoundsEl.textContent = totalRounds;
+        team1ScoreEl.textContent = team1Score;
+        team2ScoreEl.textContent = team2Score;
+        
+        // Hide controls in display mode
+        hideControlsForDisplayMode();
+    });
+    
+    socket.on('question:loaded', (data) => {
+        currentQuestion = data.question;
+        revealedAnswers = [];
+        strikes = 0;
+        currentRevealIndex = 0;
+        roundPointsEarned = 0;
+        
+        // Update question display
+        questionText.textContent = currentQuestion.question;
+        currentRoundEl.textContent = data.currentRound;
+        totalRoundsEl.textContent = data.totalRounds;
+        currentRound = data.currentRound;
+        
+        // Reset answer slots
+        answerSlots.forEach((slot, index) => {
+            slot.classList.remove('revealed');
+            const answerTextEl = slot.querySelector('.answer-text');
+            const answerPointsEl = slot.querySelector('.answer-points');
+            
+            if (index < currentQuestion.answers.length) {
+                answerTextEl.textContent = '?';
+                answerPointsEl.textContent = '';
+            } else {
+                answerTextEl.textContent = '';
+                answerPointsEl.textContent = '';
+            }
+        });
+        
+        // Reset strikes
+        updateStrikes();
+        
+        // Clear entry log
+        entryLog = [];
+        renderEntryLog();
+    });
+    
+    socket.on('answer:revealed', (data) => {
+        if (currentQuestion && data.index < currentQuestion.answers.length) {
+            revealAnswer(data.index);
+        }
+    });
+    
+    socket.on('answer:correct', (data) => {
+        // Show correct feedback
+        showCorrectFeedback();
+        
+        // Reveal the answer
+        if (currentQuestion && data.index < currentQuestion.answers.length) {
+            revealAnswer(data.index);
+        }
+        
+        roundPointsEarned = data.roundPointsEarned;
+    });
+    
+    socket.on('answer:incorrect', (data) => {
+        // Show incorrect feedback
+        showIncorrectFeedback();
+        
+        // Update strikes
+        strikes = data.strikes;
+        updateStrikes();
+    });
+    
+    socket.on('strike:updated', (data) => {
+        strikes = data.strikes;
+        updateStrikes();
+    });
+    
+    socket.on('points:updated', (data) => {
+        team1Score = data.team1Score;
+        team2Score = data.team2Score;
+        team1ScoreEl.textContent = team1Score;
+        team2ScoreEl.textContent = team2Score;
+        
+        // Animate score update
+        const scoreEl = team1Score !== parseInt(team1ScoreEl.textContent) ? team1ScoreEl : team2ScoreEl;
+        scoreEl.style.transform = 'scale(1.2)';
+        setTimeout(() => {
+            scoreEl.style.transform = 'scale(1)';
+        }, 300);
+    });
+    
+    socket.on('timer:started', (data) => {
+        timerSeconds = data.seconds;
+        timerRunning = true;
+        updateTimerDisplay();
+        startDisplayTimer();
+    });
+    
+    socket.on('timer:paused', () => {
+        timerRunning = false;
+        stopDisplayTimer();
+        timerDisplay.classList.remove('running');
+        mobileTimerDisplay.classList.remove('running');
+    });
+    
+    socket.on('timer:reset', (data) => {
+        timerSeconds = data.seconds;
+        timerRunning = false;
+        stopDisplayTimer();
+        timerDisplay.classList.remove('running', 'warning', 'danger');
+        mobileTimerDisplay.classList.remove('running', 'warning', 'danger');
+        updateTimerDisplay();
+    });
+    
+    socket.on('timer:tick', (data) => {
+        timerSeconds = data.seconds;
+        updateTimerDisplay();
+    });
+    
+    socket.on('timer:timesUp', () => {
+        timerRunning = false;
+        stopDisplayTimer();
+        showTimesUp();
+    });
+    
+    socket.on('entryLog:updated', (data) => {
+        entryLog = data.entryLog;
+        renderEntryLog();
+    });
+    
+    socket.on('entryLog:cleared', () => {
+        entryLog = [];
+        renderEntryLog();
+    });
+    
+    socket.on('round:reset', () => {
+        revealedAnswers = [];
+        strikes = 0;
+        currentRevealIndex = 0;
+        roundPointsEarned = 0;
+        
+        // Reset answer slots
+        if (currentQuestion) {
+            answerSlots.forEach((slot, index) => {
+                slot.classList.remove('revealed');
+                const answerTextEl = slot.querySelector('.answer-text');
+                const answerPointsEl = slot.querySelector('.answer-points');
+                
+                if (index < currentQuestion.answers.length) {
+                    answerTextEl.textContent = '?';
+                    answerPointsEl.textContent = '';
+                }
+            });
+        }
+        
+        updateStrikes();
+        entryLog = [];
+        renderEntryLog();
+    });
+    
+    socket.on('game:reset', (gameState) => {
+        // Go back to QR screen
+        gameContainer.style.display = 'none';
+        endScreen.style.display = 'none';
+        qrScreen.style.display = 'flex';
+        
+        // Reset state
+        currentQuestion = null;
+        revealedAnswers = [];
+        strikes = 0;
+        team1Score = 0;
+        team2Score = 0;
+        currentRound = 1;
+        
+        hostStatusIndicator.classList.add('connected');
+        hostStatusText.textContent = 'Host connected - waiting for game setup...';
+    });
+    
+    socket.on('game:ended', (data) => {
+        // Show end screen
+        gameContainer.style.display = 'none';
+        endScreen.style.display = 'flex';
+        
+        team1Name = data.team1Name;
+        team2Name = data.team2Name;
+        team1Score = data.team1Score;
+        team2Score = data.team2Score;
+        
+        // Determine winner
+        const isTie = team1Score === team2Score;
+        const team1Wins = team1Score > team2Score;
+        
+        // Update winner text
+        if (isTie) {
+            winnerText.textContent = "IT'S A TIE!";
+            winnerText.classList.add('tie');
+        } else {
+            const winnerName = team1Wins ? team1Name : team2Name;
+            winnerText.textContent = `${winnerName} WINS!`;
+            winnerText.classList.remove('tie');
+        }
+        
+        // Update team names and scores
+        finalTeam1Name.textContent = team1Name;
+        finalTeam2Name.textContent = team2Name;
+        finalTeam1Score.textContent = team1Score;
+        finalTeam2Score.textContent = team2Score;
+        
+        // Highlight winner's card
+        const team1Card = document.querySelector('.team-1-final');
+        const team2Card = document.querySelector('.team-2-final');
+        team1Card.classList.remove('winner');
+        team2Card.classList.remove('winner');
+        
+        if (!isTie) {
+            if (team1Wins) {
+                team1Card.classList.add('winner');
+            } else {
+                team2Card.classList.add('winner');
+            }
+        }
+        
+        // Start celebratory confetti for winner (not for tie)
+        if (!isTie) {
+            startConfetti();
+            setTimeout(() => {
+                stopConfetti();
+            }, 3000);
+        }
+        
+        // Hide play again button in display mode
+        if (isDisplayMode) {
+            playAgainBtn.style.display = 'none';
+        }
+    });
+    
+    socket.on('gameState:update', (data) => {
+        if (data.screen === 'setup') {
+            // Back to QR screen in display mode
+            gameContainer.style.display = 'none';
+            endScreen.style.display = 'none';
+            qrScreen.style.display = 'flex';
+        } else if (data.screen === 'game') {
+            qrScreen.style.display = 'none';
+            endScreen.style.display = 'none';
+            gameContainer.style.display = 'block';
+            hideControlsForDisplayMode();
+        }
+    });
+    
+    socket.on('disconnect', () => {
+        console.log('Display disconnected from server');
+        hostStatusIndicator.classList.remove('connected');
+        hostStatusText.textContent = 'Connection lost. Attempting to reconnect...';
+    });
+}
+
+// Hide controls for display mode
+function hideControlsForDisplayMode() {
+    // Hide all control buttons and panels
+    hostToggleBtn.style.display = 'none';
+    answerToggleBtn.style.display = 'none';
+    timerToggleBtn.style.display = 'none';
+    entryLogToggleBtn.style.display = 'none';
+    hostPanel.style.display = 'none';
+    answerPanel.style.display = 'none';
+    
+    // Hide timer controls but keep display visible
+    if (timerControlsDesktop) timerControlsDesktop.style.display = 'none';
+    if (timerButtonsDesktop) timerButtonsDesktop.style.display = 'none';
+    
+    // Hide clear log button
+    clearLogBtn.style.display = 'none';
+}
+
+// Display mode timer (receives ticks from host)
+let displayTimerInterval = null;
+
+function startDisplayTimer() {
+    stopDisplayTimer();
+    displayTimerInterval = setInterval(() => {
+        if (timerSeconds > 0) {
+            timerSeconds--;
+            updateTimerDisplay();
+        } else {
+            stopDisplayTimer();
+        }
+    }, 1000);
+}
+
+function stopDisplayTimer() {
+    if (displayTimerInterval) {
+        clearInterval(displayTimerInterval);
+        displayTimerInterval = null;
+    }
 }
 
 // Check if we're on mobile portrait (where timer/entry log toggle buttons should be visible)
@@ -488,6 +950,8 @@ function isMobilePortrait() {
 
 // Show timer and entry log toggle buttons only on mobile portrait
 function showMobileToggleButtons() {
+    if (isDisplayMode) return; // Don't show in display mode
+    
     hostToggleBtn.style.display = 'flex';
     answerToggleBtn.style.display = 'flex';
     
@@ -527,7 +991,9 @@ function handleOrientationChange() {
     }
     
     // Show appropriate toggle buttons based on screen size/orientation
-    showMobileToggleButtons();
+    if (!isDisplayMode) {
+        showMobileToggleButtons();
+    }
 }
 
 // Handle Login
@@ -584,9 +1050,10 @@ function goBackToTutorial() {
 let previousScreen = null;
 
 function openTutorialOverlay() {
-    // Store which screen was visible before
+    // Don't open tutorial from login screen or in display mode
+    if (isDisplayMode) return;
+    
     if (loginScreen.style.display !== 'none' && loginScreen.style.display !== '') {
-        // Don't open tutorial from login screen
         return;
     }
     
@@ -888,6 +1355,8 @@ function syncTimerInputs(e) {
 
 // Toggle Timer Panel (Mobile)
 function toggleTimerPanel() {
+    if (isDisplayMode) return;
+    
     const isVisible = mobileTimerPanel.classList.contains('visible');
     
     if (isVisible) {
@@ -964,6 +1433,8 @@ function escapeHtml(text) {
 
 // Toggle Host Panel
 function toggleHostPanel() {
+    if (isDisplayMode) return;
+    
     const isVisible = hostPanel.style.display !== 'none';
     
     if (isVisible) {
@@ -993,6 +1464,8 @@ function toggleHostPanel() {
 
 // Toggle Answer Panel
 function toggleAnswerPanel() {
+    if (isDisplayMode) return;
+    
     const isVisible = answerPanel.style.display !== 'none';
     
     if (isVisible) {
@@ -1027,6 +1500,8 @@ function toggleAnswerPanel() {
 
 // Toggle Entry Log Panel (Mobile)
 function toggleEntryLogPanel() {
+    if (isDisplayMode) return;
+    
     const isVisible = mobileEntryLogPanel.classList.contains('visible');
     
     if (isVisible) {
@@ -1313,8 +1788,10 @@ function revealAnswer(index) {
     slot.classList.add('revealed');
     revealedAnswers.push(index);
     
-    // Play reveal sound effect (optional - you can add audio files)
-    // playSound('reveal');
+    // Update currentRevealIndex if needed
+    if (index >= currentRevealIndex) {
+        currentRevealIndex = index + 1;
+    }
 }
 
 // Add strike
@@ -1429,9 +1906,10 @@ function resetGame() {
     }
 }
 
-// Keyboard shortcuts for host convenience
+// Keyboard shortcuts for host convenience (only in single device mode)
 document.addEventListener('keydown', (e) => {
-    // Prevent shortcuts when typing in input fields
+    // Prevent shortcuts in display mode or when typing in input fields
+    if (isDisplayMode) return;
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') {
         return;
     }
@@ -1470,4 +1948,3 @@ console.log('R - Reveal Answer');
 console.log('S - Add Strike');
 console.log('A - Add Points');
 console.log('ESC - Reset Round');
-
