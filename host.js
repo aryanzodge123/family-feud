@@ -11,6 +11,7 @@ let timerSeconds = 30;
 let timerRunning = false;
 let roundPointsEarned = 0;
 let usedQuestionIndices = [];
+let correctGuessesThisRound = []; // Track correct guesses for round summary
 
 // DOM Elements
 const connectionBar = document.getElementById('connection-bar');
@@ -63,6 +64,7 @@ const hostPointsInput = document.getElementById('host-points-input');
 const hostRoundPoints = document.getElementById('host-round-points');
 const hostAwardTeam1Btn = document.getElementById('host-award-team1-btn');
 const hostAwardTeam2Btn = document.getElementById('host-award-team2-btn');
+const hostNextRoundBtn = document.getElementById('host-next-round-btn');
 const hostResetRoundBtn = document.getElementById('host-reset-round-btn');
 const hostEndGameBtn = document.getElementById('host-end-game-btn');
 
@@ -244,6 +246,7 @@ function initSocket() {
         currentQuestion = data.question;
         revealedAnswers = [];
         roundPointsEarned = 0;
+        correctGuessesThisRound = [];
         
         // Update round display
         hostCurrentRound.textContent = data.currentRound;
@@ -295,6 +298,15 @@ function initSocket() {
         roundPointsEarned = data.roundPointsEarned;
         hostPointsInput.value = roundPointsEarned;
         hostRoundPoints.textContent = `(Round: ${roundPointsEarned})`;
+        
+        // Track correct guess for round summary
+        if (data.answerText) {
+            correctGuessesThisRound.push({
+                answer: data.answerText,
+                points: data.points
+            });
+        }
+        
         updateAnswerPreview();
     });
     
@@ -372,6 +384,37 @@ function initSocket() {
         alert(`Game Over!\n\nWinner: ${winner}\n\n${data.team1Name}: ${data.team1Score}\n${data.team2Name}: ${data.team2Score}`);
     });
     
+    socket.on('round:summary', (data) => {
+        // Update scores on host
+        hostTeam1Score.textContent = data.team1Score;
+        hostTeam2Score.textContent = data.team2Score;
+        
+        // Show round summary message
+        const summaryMsg = `Round ${data.roundNumber} Complete!\n\n` +
+            `${data.winningTeamName} earned ${data.pointsAwarded} points!\n\n` +
+            `Correct Guesses: ${data.correctGuesses.length} / ${data.totalAnswers}\n` +
+            `Strikes: ${data.strikes}\n\n` +
+            `Current Scores:\n${data.team1Name}: ${data.team1Score}\n${data.team2Name}: ${data.team2Score}`;
+        
+        // Show continue button or prompt
+        setTimeout(() => {
+            if (data.currentRound >= data.totalRounds) {
+                if (confirm(summaryMsg + '\n\nThis was the final round! View final results?')) {
+                    socket.emit('continueFromSummary');
+                }
+            } else {
+                if (confirm(summaryMsg + '\n\nContinue to next round?')) {
+                    socket.emit('continueFromSummary');
+                }
+            }
+        }, 500);
+    });
+    
+    socket.on('round:continue', () => {
+        // Game continues, will receive new question
+        correctGuessesThisRound = [];
+    });
+    
     socket.on('gameState:update', (data) => {
         if (data.screen) {
             if (data.screen === 'setup') {
@@ -435,23 +478,29 @@ function setupEventListeners() {
     hostAwardTeam1Btn.addEventListener('click', () => {
         const points = parseInt(hostPointsInput.value) || 0;
         if (points > 0) {
-            socket.emit('addPoints', { team: 1, points });
+            socket.emit('endRound', { team: 1, points, correctGuesses: correctGuessesThisRound });
             hostPointsInput.value = 0;
             roundPointsEarned = 0;
+            correctGuessesThisRound = [];
             hostRoundPoints.textContent = '(Round: 0)';
         }
     });
     hostAwardTeam2Btn.addEventListener('click', () => {
         const points = parseInt(hostPointsInput.value) || 0;
         if (points > 0) {
-            socket.emit('addPoints', { team: 2, points });
+            socket.emit('endRound', { team: 2, points, correctGuesses: correctGuessesThisRound });
             hostPointsInput.value = 0;
             roundPointsEarned = 0;
+            correctGuessesThisRound = [];
             hostRoundPoints.textContent = '(Round: 0)';
         }
     });
     
     // Flow controls
+    hostNextRoundBtn.addEventListener('click', () => {
+        // Emit next round / show summary event
+        socket.emit('showRoundSummary');
+    });
     hostResetRoundBtn.addEventListener('click', () => {
         if (confirm('Reset this round?')) {
             socket.emit('resetRound');

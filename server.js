@@ -76,7 +76,10 @@ function createGameRoom() {
             timerCurrentSeconds: 0,
             entryLog: [],
             roundPointsEarned: 0,
-            usedQuestionIndices: []
+            usedQuestionIndices: [],
+            correctGuessesThisRound: [],
+            lastWinningTeam: 0,
+            lastPointsAwarded: 0
         }
     };
     
@@ -442,6 +445,9 @@ io.on('connection', (socket) => {
         room.gameState.strikes = 0;
         room.gameState.entryLog = [];
         room.gameState.roundPointsEarned = 0;
+        room.gameState.correctGuessesThisRound = [];
+        room.gameState.lastWinningTeam = 0;
+        room.gameState.lastPointsAwarded = 0;
         
         if (room.gameState.currentRound < room.gameState.totalRounds) {
             room.gameState.currentRound++;
@@ -509,10 +515,115 @@ io.on('connection', (socket) => {
             room.gameState.team2Score += points;
         }
         
+        // Track for round summary
+        room.gameState.lastWinningTeam = team;
+        room.gameState.lastPointsAwarded = points;
+        
         io.to(socket.roomCode).emit('points:updated', {
             team1Score: room.gameState.team1Score,
             team2Score: room.gameState.team2Score
         });
+    });
+    
+    // End round and show summary
+    socket.on('endRound', ({ team, points, correctGuesses }) => {
+        if (!socket.isHost || !socket.roomCode) return;
+        
+        const room = getRoom(socket.roomCode);
+        if (!room) return;
+        
+        // Add points to team
+        if (team === 1) {
+            room.gameState.team1Score += points;
+        } else {
+            room.gameState.team2Score += points;
+        }
+        
+        // Use server-tracked correct guesses as fallback
+        const guesses = correctGuesses && correctGuesses.length > 0 
+            ? correctGuesses 
+            : (room.gameState.correctGuessesThisRound || []);
+        
+        // Emit round summary to display
+        io.to(socket.roomCode).emit('round:summary', {
+            roundNumber: room.gameState.currentRound,
+            winningTeam: team,
+            winningTeamName: team === 1 ? room.gameState.team1Name : room.gameState.team2Name,
+            pointsAwarded: points,
+            question: room.gameState.currentQuestion ? room.gameState.currentQuestion.question : '',
+            correctGuesses: guesses,
+            totalAnswers: room.gameState.currentQuestion ? room.gameState.currentQuestion.answers.length : 0,
+            strikes: room.gameState.strikes,
+            team1Name: room.gameState.team1Name,
+            team2Name: room.gameState.team2Name,
+            team1Score: room.gameState.team1Score,
+            team2Score: room.gameState.team2Score,
+            currentRound: room.gameState.currentRound,
+            totalRounds: room.gameState.totalRounds
+        });
+    });
+    
+    // Show round summary (triggered by Next Round button)
+    socket.on('showRoundSummary', () => {
+        if (!socket.isHost || !socket.roomCode) return;
+        
+        const room = getRoom(socket.roomCode);
+        if (!room) return;
+        
+        // Get correct guesses from server-tracked state
+        const guesses = room.gameState.correctGuessesThisRound || [];
+        
+        // Calculate round points (sum of revealed answer points)
+        let roundPoints = 0;
+        if (room.gameState.currentQuestion) {
+            room.gameState.currentQuestion.answers.forEach((answer, index) => {
+                if (room.gameState.revealedAnswers && room.gameState.revealedAnswers[index]) {
+                    roundPoints += answer.points;
+                }
+            });
+        }
+        
+        // Determine winning team based on last points action or default
+        const winningTeam = room.gameState.lastWinningTeam || 1;
+        
+        // Emit round summary to display
+        io.to(socket.roomCode).emit('round:summary', {
+            roundNumber: room.gameState.currentRound,
+            winningTeam: winningTeam,
+            winningTeamName: winningTeam === 1 ? room.gameState.team1Name : room.gameState.team2Name,
+            pointsAwarded: room.gameState.lastPointsAwarded || roundPoints,
+            question: room.gameState.currentQuestion ? room.gameState.currentQuestion.question : '',
+            correctGuesses: guesses,
+            totalAnswers: room.gameState.currentQuestion ? room.gameState.currentQuestion.answers.length : 0,
+            strikes: room.gameState.strikes,
+            team1Name: room.gameState.team1Name,
+            team2Name: room.gameState.team2Name,
+            team1Score: room.gameState.team1Score,
+            team2Score: room.gameState.team2Score,
+            currentRound: room.gameState.currentRound,
+            totalRounds: room.gameState.totalRounds
+        });
+    });
+    
+    // Continue from round summary to next round
+    socket.on('continueFromSummary', () => {
+        if (!socket.isHost || !socket.roomCode) return;
+        
+        const room = getRoom(socket.roomCode);
+        if (!room) return;
+        
+        // Check if game is over
+        if (room.gameState.currentRound >= room.gameState.totalRounds) {
+            room.gameState.screen = 'end';
+            io.to(socket.roomCode).emit('game:ended', {
+                team1Name: room.gameState.team1Name,
+                team2Name: room.gameState.team2Name,
+                team1Score: room.gameState.team1Score,
+                team2Score: room.gameState.team2Score
+            });
+        } else {
+            io.to(socket.roomCode).emit('round:continue');
+        }
     });
     
     // Check answer (AI)
@@ -557,12 +668,23 @@ io.on('connection', (socket) => {
                 
                 if (matchedIndex !== -1 && !room.gameState.revealedAnswers.includes(matchedIndex)) {
                     room.gameState.revealedAnswers.push(matchedIndex);
-                    const points = room.gameState.currentQuestion.answers[matchedIndex].points;
+                    const answer = room.gameState.currentQuestion.answers[matchedIndex];
+                    const points = answer.points;
                     room.gameState.roundPointsEarned += points;
+                    
+                    // Track correct guess for round summary
+                    if (!room.gameState.correctGuessesThisRound) {
+                        room.gameState.correctGuessesThisRound = [];
+                    }
+                    room.gameState.correctGuessesThisRound.push({
+                        answer: answer.text,
+                        points: points
+                    });
                     
                     // Notify display to show correct feedback and reveal
                     io.to(socket.roomCode).emit('answer:correct', {
                         index: matchedIndex,
+                        answerText: answer.text,
                         points,
                         roundPointsEarned: room.gameState.roundPointsEarned
                     });

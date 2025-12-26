@@ -56,6 +56,7 @@
             <button class="nav-tab" data-tab="answer">✎ Answer</button>
             <button class="nav-tab" data-tab="timer">⏱ Timer</button>
             <button class="nav-tab" data-tab="log">📋 Log</button>
+            <button class="nav-tab help-tab" data-tab="help">❓</button>
         </div>
 
         <!-- Game Info Header -->
@@ -173,6 +174,7 @@
 
             <!-- Game Flow Controls -->
             <div class="flow-controls">
+                <button class="flow-btn next-round" id="host-next-round-btn">→ Next Round</button>
                 <button class="flow-btn warning" id="host-reset-round-btn">Reset Round</button>
                 <button class="flow-btn danger" id="host-end-game-btn">End Game</button>
             </div>
@@ -260,6 +262,45 @@
                 </div>
                 <div class="log-list" id="host-log-list">
                     <div class="log-empty">No entries yet</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab Content: How to Play -->
+        <div class="tab-content" id="tab-help">
+            <div class="help-section">
+                <h2 class="help-title">📺 Display Mode Guide</h2>
+                
+                <div class="help-card">
+                    <h3>🎯 Game Controls</h3>
+                    <ul>
+                        <li><strong>New Question</strong> — Load the next question</li>
+                        <li><strong>Reveal</strong> — Each answer has its own reveal button</li>
+                        <li><strong>Add/Remove Strike</strong> — Track wrong guesses</li>
+                        <li><strong>Add Points</strong> — Award points to a team</li>
+                        <li><strong>→ Next Round</strong> — Show summary and continue</li>
+                    </ul>
+                </div>
+
+                <div class="help-card">
+                    <h3>✎ Answer Checking</h3>
+                    <p>Type what the contestant said in the Answer tab. The AI will check if it matches any answer on the board.</p>
+                    <p>✓ Correct = Confetti + Auto-reveal</p>
+                    <p>✗ Wrong = Strike added</p>
+                </div>
+
+                <div class="help-card">
+                    <h3>📺 What Players See</h3>
+                    <p>The display screen shows only the game — no controls visible! Answer checking is private to you.</p>
+                </div>
+
+                <div class="help-card">
+                    <h3>💡 Pro Tips</h3>
+                    <ul>
+                        <li>Points are auto-tallied when answers are revealed</li>
+                        <li>You can reveal answers in any order!</li>
+                        <li>Use the timer for fast-paced rounds</li>
+                    </ul>
                 </div>
             </div>
         </div>

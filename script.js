@@ -14,6 +14,9 @@ let totalRounds = 7;
 let currentRound = 1;
 let usedQuestionIndices = []; // Track which questions have been used
 let roundPointsEarned = 0; // Track points earned from correct entries in current round
+let correctGuessesThisRound = []; // Track correct guesses with their points for round summary
+let lastPointsAwarded = 0; // Track points awarded in the last round
+let lastWinningTeam = 0; // Track which team got points (1 or 2)
 
 // Display Mode State
 let isDisplayMode = false;
@@ -284,6 +287,7 @@ function showTimesUp() {
 const modeScreen = document.getElementById('mode-screen');
 const singleDeviceBtn = document.getElementById('single-device-btn');
 const displayModeBtn = document.getElementById('display-mode-btn');
+const howToPlayModeBtn = document.getElementById('how-to-play-mode-btn');
 
 // QR Code Screen Elements
 const qrScreen = document.getElementById('qr-screen');
@@ -294,6 +298,7 @@ const qrHostUrl = document.getElementById('qr-host-url');
 const hostStatusIndicator = document.getElementById('host-status-indicator');
 const hostStatusText = document.getElementById('host-status-text');
 const backToModeBtn = document.getElementById('back-to-mode-btn');
+const howToPlayQrBtn = document.getElementById('how-to-play-qr-btn');
 
 // Login Screen Elements
 const loginScreen = document.getElementById('login-screen');
@@ -310,6 +315,11 @@ const videoDropdownArrow = document.getElementById('video-dropdown-arrow');
 const tutorialVideoIframe = document.getElementById('tutorial-video-iframe');
 const backToTutorialBtn = document.getElementById('back-to-tutorial-btn');
 const helpBtn = document.getElementById('help-btn');
+const tutorialSingleTab = document.getElementById('tutorial-single-tab');
+const tutorialDisplayTab = document.getElementById('tutorial-display-tab');
+const tutorialSingleContent = document.getElementById('tutorial-single-content');
+const tutorialDisplayContent = document.getElementById('tutorial-display-content');
+const backToModeFromTutorialBtn = document.getElementById('back-to-mode-from-tutorial-btn');
 
 // Host Password
 const HOST_PASSWORD = '654-SteveHarveyIsCool!-321';
@@ -340,6 +350,21 @@ const finalTeam1Score = document.getElementById('final-team1-score');
 const finalTeam2Score = document.getElementById('final-team2-score');
 const playAgainBtn = document.getElementById('play-again-btn');
 
+// Round Summary Screen Elements
+const roundSummaryScreen = document.getElementById('round-summary-screen');
+const summaryRoundNumber = document.getElementById('summary-round-number');
+const summaryWinningTeam = document.getElementById('summary-winning-team');
+const summaryPointsValue = document.getElementById('summary-points-value');
+const summaryQuestion = document.getElementById('summary-question');
+const summaryCorrectAnswers = document.getElementById('summary-correct-answers');
+const summaryAnswersFound = document.getElementById('summary-answers-found');
+const summaryStrikes = document.getElementById('summary-strikes');
+const summaryTeam1Name = document.getElementById('summary-team1-name');
+const summaryTeam2Name = document.getElementById('summary-team2-name');
+const summaryTeam1Score = document.getElementById('summary-team1-score');
+const summaryTeam2Score = document.getElementById('summary-team2-score');
+const nextRoundBtn = document.getElementById('next-round-btn');
+
 // Buttons
 const newQuestionBtn = document.getElementById('new-question-btn');
 const revealAnswerBtn = document.getElementById('reveal-answer-btn');
@@ -349,6 +374,7 @@ const addPointsBtn = document.getElementById('add-points-btn');
 const resetRoundBtn = document.getElementById('reset-round-btn');
 const resetGameBtn = document.getElementById('reset-game-btn');
 const endGameBtn = document.getElementById('end-game-btn');
+const showSummaryBtn = document.getElementById('show-summary-btn');
 
 // Host Panel Elements
 const hostPanel = document.getElementById('host-panel');
@@ -408,6 +434,8 @@ async function init() {
     singleDeviceBtn.addEventListener('click', startSingleDeviceMode);
     displayModeBtn.addEventListener('click', startDisplayMode);
     backToModeBtn.addEventListener('click', backToModeSelection);
+    howToPlayModeBtn.addEventListener('click', openTutorialOverlay);
+    howToPlayQrBtn.addEventListener('click', openTutorialFromQr);
     
     // Login screen event listeners
     loginBtn.addEventListener('click', handleLogin);
@@ -423,6 +451,13 @@ async function init() {
     // Video dropdown toggle
     videoDropdownToggle.addEventListener('click', toggleVideoDropdown);
     
+    // Tutorial mode tabs
+    tutorialSingleTab.addEventListener('click', () => switchTutorialMode('single'));
+    tutorialDisplayTab.addEventListener('click', () => switchTutorialMode('display'));
+    
+    // Back to mode selection from tutorial
+    backToModeFromTutorialBtn.addEventListener('click', goBackToModeSelection);
+    
     // Back to tutorial button (setup screen)
     backToTutorialBtn.addEventListener('click', goBackToTutorial);
     
@@ -433,6 +468,7 @@ async function init() {
     setupRoundButtons();
     startGameBtn.addEventListener('click', startGame);
     playAgainBtn.addEventListener('click', playAgain);
+    nextRoundBtn.addEventListener('click', continueFromSummary);
     
     // Allow Enter key to start game from setup
     [team1NameInput, team2NameInput, customRoundsInput].forEach(input => {
@@ -476,6 +512,9 @@ async function init() {
     });
     endGameBtn.addEventListener('click', () => {
         if (!isDisplayMode) endGameEarly();
+    });
+    showSummaryBtn.addEventListener('click', () => {
+        if (!isDisplayMode) triggerRoundSummary();
     });
     checkAnswerBtn.addEventListener('click', () => {
         if (!isDisplayMode) checkPlayerAnswer();
@@ -659,6 +698,7 @@ function initDisplaySocket() {
         strikes = 0;
         currentRevealIndex = 0;
         roundPointsEarned = 0;
+        correctGuessesThisRound = [];
         
         // Update question display
         questionText.textContent = currentQuestion.question;
@@ -784,6 +824,7 @@ function initDisplaySocket() {
         strikes = 0;
         currentRevealIndex = 0;
         roundPointsEarned = 0;
+        correctGuessesThisRound = [];
         
         // Reset answer slots
         if (currentQuestion) {
@@ -878,6 +919,96 @@ function initDisplaySocket() {
         if (isDisplayMode) {
             playAgainBtn.style.display = 'none';
         }
+    });
+    
+    socket.on('round:summary', (data) => {
+        // Store round summary data
+        lastPointsAwarded = data.pointsAwarded;
+        lastWinningTeam = data.winningTeam;
+        team1Score = data.team1Score;
+        team2Score = data.team2Score;
+        
+        // Build correct guesses array
+        correctGuessesThisRound = data.correctGuesses || [];
+        
+        // Update round number
+        summaryRoundNumber.textContent = data.roundNumber;
+        
+        // Update winning team
+        summaryWinningTeam.textContent = data.winningTeamName;
+        summaryWinningTeam.className = 'points-awarded-team team-' + data.winningTeam;
+        
+        // Update points value
+        summaryPointsValue.textContent = data.pointsAwarded;
+        
+        // Update question
+        summaryQuestion.textContent = '"' + data.question + '"';
+        
+        // Update correct answers list
+        if (correctGuessesThisRound.length > 0) {
+            summaryCorrectAnswers.innerHTML = correctGuessesThisRound.map(guess => `
+                <div class="stats-answer-item">
+                    <span class="stats-answer-text">${escapeHtml(guess.answer)}</span>
+                    <span class="stats-answer-points">${guess.points} pts</span>
+                </div>
+            `).join('');
+        } else {
+            summaryCorrectAnswers.innerHTML = '<div class="stats-no-answers">No answers were guessed correctly</div>';
+        }
+        
+        // Update totals
+        summaryAnswersFound.textContent = `${correctGuessesThisRound.length} / ${data.totalAnswers}`;
+        summaryStrikes.textContent = data.strikes;
+        
+        // Update team scores
+        summaryTeam1Name.textContent = data.team1Name;
+        summaryTeam2Name.textContent = data.team2Name;
+        summaryTeam1Score.textContent = data.team1Score;
+        summaryTeam2Score.textContent = data.team2Score;
+        
+        // Update score displays on game screen too
+        team1ScoreEl.textContent = data.team1Score;
+        team2ScoreEl.textContent = data.team2Score;
+        
+        // Highlight winning team's score card
+        const team1Card = document.querySelector('.team-1-summary');
+        const team2Card = document.querySelector('.team-2-summary');
+        team1Card.classList.remove('winner');
+        team2Card.classList.remove('winner');
+        if (data.winningTeam === 1) {
+            team1Card.classList.add('winner');
+        } else {
+            team2Card.classList.add('winner');
+        }
+        
+        // Update button text based on whether this is the last round
+        if (data.currentRound >= data.totalRounds) {
+            nextRoundBtn.textContent = 'VIEW FINAL RESULTS →';
+        } else {
+            nextRoundBtn.textContent = 'NEXT ROUND →';
+        }
+        
+        // Hide next round button in display mode (host controls)
+        if (isDisplayMode) {
+            nextRoundBtn.style.display = 'none';
+        }
+        
+        // Hide game container, show round summary
+        gameContainer.style.display = 'none';
+        roundSummaryScreen.style.display = 'flex';
+        
+        // Start confetti for celebration
+        startConfetti();
+        setTimeout(() => {
+            stopConfetti();
+        }, 2000);
+    });
+    
+    socket.on('round:continue', () => {
+        // Hide round summary, go back to game
+        roundSummaryScreen.style.display = 'none';
+        gameContainer.style.display = 'block';
+        hideControlsForDisplayMode();
     });
     
     socket.on('gameState:update', (data) => {
@@ -1032,6 +1163,17 @@ function toggleVideoDropdown() {
     }
 }
 
+// Switch tutorial mode tabs
+function switchTutorialMode(mode) {
+    // Update tab active states
+    tutorialSingleTab.classList.toggle('active', mode === 'single');
+    tutorialDisplayTab.classList.toggle('active', mode === 'display');
+    
+    // Update content visibility
+    tutorialSingleContent.classList.toggle('active', mode === 'single');
+    tutorialDisplayContent.classList.toggle('active', mode === 'display');
+}
+
 // Continue to Setup from Tutorial
 function continueToSetup() {
     // Close video dropdown and stop video if open
@@ -1044,6 +1186,31 @@ function continueToSetup() {
 function goBackToTutorial() {
     setupScreen.style.display = 'none';
     tutorialScreen.style.display = 'flex';
+    // Reset button text when navigating back to tutorial
+    continueToSetupBtn.textContent = 'LET\'S PLAY! 🎉';
+    previousScreen = null;
+}
+
+// Go back to mode selection from tutorial
+function goBackToModeSelection() {
+    closeTutorialVideo();
+    tutorialScreen.style.display = 'none';
+    modeScreen.style.display = 'flex';
+    previousScreen = null;
+}
+
+// Open tutorial from QR screen (special case for display mode)
+function openTutorialFromQr() {
+    previousScreen = 'qr';
+    qrScreen.style.display = 'none';
+    tutorialScreen.style.display = 'flex';
+    
+    // Switch to Display Mode tab in tutorial
+    switchTutorialMode('display');
+    
+    // Set up continue button for going back
+    continueToSetupBtn.textContent = 'BACK';
+    backToModeFromTutorialBtn.style.display = 'none';
 }
 
 // Open Tutorial Overlay (from anywhere)
@@ -1063,7 +1230,11 @@ function openTutorialOverlay() {
     }
     
     // Determine which screen is currently visible
-    if (setupScreen.style.display === 'flex') {
+    if (modeScreen.style.display !== 'none' && modeScreen.style.display !== '') {
+        previousScreen = 'mode';
+    } else if (qrScreen.style.display === 'flex') {
+        previousScreen = 'qr';
+    } else if (setupScreen.style.display === 'flex') {
         previousScreen = 'setup';
     } else if (gameContainer.style.display !== 'none' && gameContainer.style.display !== '') {
         previousScreen = 'game';
@@ -1074,6 +1245,8 @@ function openTutorialOverlay() {
     }
     
     // Hide all screens
+    modeScreen.style.display = 'none';
+    qrScreen.style.display = 'none';
     setupScreen.style.display = 'none';
     gameContainer.style.display = 'none';
     endScreen.style.display = 'none';
@@ -1081,8 +1254,21 @@ function openTutorialOverlay() {
     // Show tutorial
     tutorialScreen.style.display = 'flex';
     
-    // Change continue button behavior to go back to previous screen
-    continueToSetupBtn.textContent = previousScreen ? 'BACK TO GAME' : 'LET\'S PLAY! 🎉';
+    // Change continue button behavior based on where we came from
+    if (previousScreen === 'mode' || previousScreen === 'qr') {
+        continueToSetupBtn.textContent = 'BACK';
+    } else if (previousScreen) {
+        continueToSetupBtn.textContent = 'BACK TO GAME';
+    } else {
+        continueToSetupBtn.textContent = 'LET\'S PLAY! 🎉';
+    }
+    
+    // Show/hide back to mode button based on context
+    if (previousScreen === 'mode' || previousScreen === 'qr') {
+        backToModeFromTutorialBtn.style.display = 'none'; // Hide since continue goes back to mode
+    } else {
+        backToModeFromTutorialBtn.style.display = 'block';
+    }
 }
 
 // Close tutorial video helper
@@ -1099,7 +1285,11 @@ function handleContinueFromTutorial() {
     closeTutorialVideo();
     tutorialScreen.style.display = 'none';
     
-    if (previousScreen === 'setup') {
+    if (previousScreen === 'mode') {
+        modeScreen.style.display = 'flex';
+    } else if (previousScreen === 'qr') {
+        qrScreen.style.display = 'flex';
+    } else if (previousScreen === 'setup') {
         setupScreen.style.display = 'flex';
     } else if (previousScreen === 'game') {
         gameContainer.style.display = 'block';
@@ -1631,6 +1821,12 @@ async function checkPlayerAnswer() {
                 const points = currentQuestion.answers[matchedIndex].points;
                 roundPointsEarned += points;
                 pointsInput.value = roundPointsEarned;
+                
+                // Track this correct guess for round summary
+                correctGuessesThisRound.push({
+                    answer: matchedAnswerText,
+                    points: points
+                });
             } else if (matchedIndex !== -1) {
                 // Already revealed - still log as correct but note it
                 addEntryToLog(playerAnswer, true);
@@ -1719,6 +1915,7 @@ function loadNewQuestion() {
     strikes = 0;
     currentRevealIndex = 0;
     roundPointsEarned = 0;
+    correctGuessesThisRound = [];
     
     // Update question display
     questionText.textContent = currentQuestion.question;
@@ -1839,6 +2036,10 @@ function addPoints() {
         team2ScoreEl.textContent = team2Score;
     }
     
+    // Store for round summary
+    lastPointsAwarded = points;
+    lastWinningTeam = team;
+    
     // Animate score update
     const scoreEl = team === 1 ? team1ScoreEl : team2ScoreEl;
     scoreEl.style.transform = 'scale(1.2)';
@@ -1847,6 +2048,107 @@ function addPoints() {
     }, 300);
     
     pointsInput.value = 0;
+    
+    // Points added - user can click "Next Round" when ready
+}
+
+// Trigger round summary (called by Next Round button)
+function triggerRoundSummary() {
+    // Validate that points have been awarded this round
+    if (lastPointsAwarded === 0 && roundPointsEarned === 0) {
+        // Use accumulated round points if no explicit points were added
+        if (roundPointsEarned > 0) {
+            lastPointsAwarded = roundPointsEarned;
+            // Default to team 1 if not set
+            if (lastWinningTeam === 0) lastWinningTeam = 1;
+        }
+    }
+    
+    // Show the round summary
+    showRoundSummary();
+}
+
+// Show round summary screen
+function showRoundSummary() {
+    // Update round number
+    summaryRoundNumber.textContent = currentRound;
+    
+    // Update winning team
+    const winningTeamName = lastWinningTeam === 1 ? team1Name : team2Name;
+    summaryWinningTeam.textContent = winningTeamName;
+    summaryWinningTeam.className = 'points-awarded-team team-' + lastWinningTeam;
+    
+    // Update points value
+    summaryPointsValue.textContent = lastPointsAwarded;
+    
+    // Update question
+    if (currentQuestion) {
+        summaryQuestion.textContent = '"' + currentQuestion.question + '"';
+    }
+    
+    // Update correct answers list
+    if (correctGuessesThisRound.length > 0) {
+        summaryCorrectAnswers.innerHTML = correctGuessesThisRound.map(guess => `
+            <div class="stats-answer-item">
+                <span class="stats-answer-text">${escapeHtml(guess.answer)}</span>
+                <span class="stats-answer-points">${guess.points} pts</span>
+            </div>
+        `).join('');
+    } else {
+        summaryCorrectAnswers.innerHTML = '<div class="stats-no-answers">No answers were guessed correctly</div>';
+    }
+    
+    // Update totals
+    const totalAnswers = currentQuestion ? currentQuestion.answers.length : 0;
+    summaryAnswersFound.textContent = `${correctGuessesThisRound.length} / ${totalAnswers}`;
+    summaryStrikes.textContent = strikes;
+    
+    // Update team scores
+    summaryTeam1Name.textContent = team1Name;
+    summaryTeam2Name.textContent = team2Name;
+    summaryTeam1Score.textContent = team1Score;
+    summaryTeam2Score.textContent = team2Score;
+    
+    // Highlight winning team's score card
+    const team1Card = document.querySelector('.team-1-summary');
+    const team2Card = document.querySelector('.team-2-summary');
+    team1Card.classList.remove('winner');
+    team2Card.classList.remove('winner');
+    if (lastWinningTeam === 1) {
+        team1Card.classList.add('winner');
+    } else {
+        team2Card.classList.add('winner');
+    }
+    
+    // Update button text based on whether this is the last round
+    if (currentRound >= totalRounds) {
+        nextRoundBtn.textContent = 'VIEW FINAL RESULTS →';
+    } else {
+        nextRoundBtn.textContent = 'NEXT ROUND →';
+    }
+    
+    // Hide game container, show round summary
+    gameContainer.style.display = 'none';
+    roundSummaryScreen.style.display = 'flex';
+    
+    // Start confetti for celebration
+    startConfetti();
+    setTimeout(() => {
+        stopConfetti();
+    }, 2000);
+}
+
+// Continue to next round from summary
+function continueFromSummary() {
+    roundSummaryScreen.style.display = 'none';
+    
+    // Check if game is over
+    if (currentRound >= totalRounds) {
+        showEndScreen();
+    } else {
+        gameContainer.style.display = 'block';
+        loadNewQuestion();
+    }
 }
 
 // Reset current round
@@ -1859,6 +2161,7 @@ function resetRound() {
     strikes = 0;
     currentRevealIndex = 0;
     roundPointsEarned = 0;
+    correctGuessesThisRound = [];
     pointsInput.value = 0;
     
     // Hide all answers
