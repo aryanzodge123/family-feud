@@ -54,6 +54,7 @@
         <div class="host-nav-tabs">
             <button class="nav-tab active" data-tab="game">🎮 Game</button>
             <button class="nav-tab" data-tab="answer">✎ Answer</button>
+            <button class="nav-tab party-tab" data-tab="party" style="display: none;">🎉 Turn</button>
             <button class="nav-tab" data-tab="timer">⏱ Timer</button>
             <button class="nav-tab" data-tab="log">📋 Log</button>
             <button class="nav-tab help-tab" data-tab="help">❓</button>
@@ -214,6 +215,50 @@
                 <div class="answer-checking" id="host-answer-checking" style="display: none;">
                     <div class="spinner"></div>
                     <span>Checking answer...</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab Content: Party Turn Control -->
+        <div class="tab-content" id="tab-party">
+            <div class="party-turn-section">
+                <div class="party-battle-info">
+                    <h3 class="party-section-title">Current Battle</h3>
+                    <div class="party-battle-players">
+                        <div class="party-battle-player team1">
+                            <span class="battle-team-label">Team 1</span>
+                            <span class="battle-player-name" id="host-battle-player1">-</span>
+                        </div>
+                        <span class="battle-vs">VS</span>
+                        <div class="party-battle-player team2">
+                            <span class="battle-team-label">Team 2</span>
+                            <span class="battle-player-name" id="host-battle-player2">-</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="party-turn-status">
+                    <span class="turn-label">Current Turn:</span>
+                    <span class="turn-player" id="host-current-turn-player">Face-off in progress</span>
+                </div>
+
+                <div class="party-turn-controls">
+                    <h3 class="party-section-title">Give Turn To</h3>
+                    <div class="turn-buttons">
+                        <button class="turn-btn team1" id="host-give-turn-player1-btn">
+                            <span id="host-turn-player1-name">Player 1</span>
+                        </button>
+                        <button class="turn-btn team2" id="host-give-turn-player2-btn">
+                            <span id="host-turn-player2-name">Player 2</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="party-battle-controls">
+                    <button class="battle-control-btn" id="host-next-battle-btn">
+                        <span class="btn-icon">⏭</span>
+                        <span>Next Battle</span>
+                    </button>
                 </div>
             </div>
         </div>

@@ -1212,29 +1212,189 @@ body {
     .host-logo {
         font-size: 3rem;
     }
-    
+
     .host-login-container {
         padding-top: 80px;
     }
-    
+
     .control-grid {
         grid-template-columns: repeat(4, 1fr);
     }
-    
+
     .strike-controls {
         grid-template-columns: repeat(2, 1fr);
         max-width: 400px;
         margin: 0 auto 16px;
     }
-    
+
     .points-section {
         max-width: 500px;
         margin: 0 auto 16px;
     }
-    
+
     .flow-controls {
         max-width: 400px;
         margin: 0 auto;
     }
+}
+
+/* ============ PARTY MODE STYLES ============ */
+
+.party-turn-section {
+    padding: 16px;
+}
+
+.party-section-title {
+    color: var(--primary-gold);
+    font-size: 1rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 12px;
+    text-align: center;
+}
+
+.party-battle-info {
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 10px;
+    padding: 16px;
+    margin-bottom: 16px;
+}
+
+.party-battle-players {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 16px;
+}
+
+.party-battle-player {
+    text-align: center;
+    padding: 12px 20px;
+    border-radius: 8px;
+    min-width: 100px;
+}
+
+.party-battle-player.team1 {
+    background: linear-gradient(135deg, #2d5a27, #1a3a15);
+    border: 2px solid #4a9f41;
+}
+
+.party-battle-player.team2 {
+    background: linear-gradient(135deg, #5a2727, #3a1515);
+    border: 2px solid #9f4a4a;
+}
+
+.battle-team-label {
+    display: block;
+    font-size: 0.75rem;
+    color: rgba(255, 255, 255, 0.7);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+}
+
+.battle-player-name {
+    display: block;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: white;
+}
+
+.battle-vs {
+    color: var(--primary-gold);
+    font-size: 1.2rem;
+    font-weight: 700;
+}
+
+.party-turn-status {
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 16px;
+    text-align: center;
+}
+
+.turn-label {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    margin-right: 8px;
+}
+
+.turn-player {
+    color: var(--primary-gold);
+    font-weight: 600;
+    font-size: 1rem;
+}
+
+.party-turn-controls {
+    margin-bottom: 20px;
+}
+
+.turn-buttons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.turn-btn {
+    padding: 14px 16px;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.turn-btn.team1 {
+    background: linear-gradient(135deg, #2d5a27, #1a3a15);
+    border: 2px solid #4a9f41;
+    color: white;
+}
+
+.turn-btn.team1:hover {
+    background: linear-gradient(135deg, #3d6a37, #2a4a25);
+}
+
+.turn-btn.team2 {
+    background: linear-gradient(135deg, #5a2727, #3a1515);
+    border: 2px solid #9f4a4a;
+    color: white;
+}
+
+.turn-btn.team2:hover {
+    background: linear-gradient(135deg, #6a3737, #4a2525);
+}
+
+.turn-btn.active {
+    box-shadow: 0 0 15px rgba(255, 215, 0, 0.5);
+}
+
+.party-battle-controls {
+    text-align: center;
+}
+
+.battle-control-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 28px;
+    background: linear-gradient(135deg, var(--primary-gold), #ffaa00);
+    color: var(--primary-blue);
+    border: none;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.battle-control-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(255, 215, 0, 0.4);
+}
+
+.battle-control-btn .btn-icon {
+    font-size: 1.2rem;
 }
 

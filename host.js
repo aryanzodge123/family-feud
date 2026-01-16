@@ -13,6 +13,13 @@ let roundPointsEarned = 0;
 let usedQuestionIndices = [];
 let correctGuessesThisRound = []; // Track correct guesses for round summary
 
+// Party mode state
+let isPartyMode = false;
+let partyPlayers = [];
+let currentBattlePlayers = [null, null];
+let currentTurnPlayer = null;
+let faceOffActive = false;
+
 // DOM Elements
 const connectionBar = document.getElementById('connection-bar');
 const connectionIndicator = document.getElementById('connection-indicator');
@@ -109,6 +116,17 @@ const hostResetGameBtn = document.getElementById('host-reset-game-btn');
 const disconnectedOverlay = document.getElementById('disconnected-overlay');
 const disconnectReason = document.getElementById('disconnect-reason');
 const reconnectBtn = document.getElementById('reconnect-btn');
+
+// Party Mode Elements
+const partyTab = document.querySelector('.party-tab');
+const hostBattlePlayer1 = document.getElementById('host-battle-player1');
+const hostBattlePlayer2 = document.getElementById('host-battle-player2');
+const hostCurrentTurnPlayer = document.getElementById('host-current-turn-player');
+const hostGiveTurnPlayer1Btn = document.getElementById('host-give-turn-player1-btn');
+const hostGiveTurnPlayer2Btn = document.getElementById('host-give-turn-player2-btn');
+const hostTurnPlayer1Name = document.getElementById('host-turn-player1-name');
+const hostTurnPlayer2Name = document.getElementById('host-turn-player2-name');
+const hostNextBattleBtn = document.getElementById('host-next-battle-btn');
 
 // Initialize
 async function init() {
@@ -426,6 +444,57 @@ function initSocket() {
             }
         }
     });
+
+    // ============ PARTY MODE SOCKET HANDLERS ============
+
+    socket.on('players:updated', (data) => {
+        partyPlayers = data.players;
+    });
+
+    socket.on('teams:updated', (data) => {
+        partyPlayers = data.players;
+    });
+
+    socket.on('partyGame:started', (gameState) => {
+        isPartyMode = true;
+        // Show party tab
+        if (partyTab) {
+            partyTab.style.display = 'flex';
+        }
+        applyGameState(gameState);
+        showGameControls();
+    });
+
+    socket.on('battle:started', (data) => {
+        currentBattlePlayers = [data.team1Player, data.team2Player];
+        faceOffActive = data.faceOffActive;
+
+        // Update battle display
+        if (hostBattlePlayer1) {
+            hostBattlePlayer1.textContent = data.team1Player ? data.team1Player.name : '-';
+        }
+        if (hostBattlePlayer2) {
+            hostBattlePlayer2.textContent = data.team2Player ? data.team2Player.name : '-';
+        }
+        if (hostTurnPlayer1Name) {
+            hostTurnPlayer1Name.textContent = data.team1Player ? data.team1Player.name : 'Player 1';
+        }
+        if (hostTurnPlayer2Name) {
+            hostTurnPlayer2Name.textContent = data.team2Player ? data.team2Player.name : 'Player 2';
+        }
+        if (hostCurrentTurnPlayer) {
+            hostCurrentTurnPlayer.textContent = faceOffActive ? 'Face-off in progress' : '-';
+        }
+    });
+
+    socket.on('turn:changed', (data) => {
+        currentTurnPlayer = data.currentTurnPlayer;
+        faceOffActive = data.faceOffActive;
+
+        if (hostCurrentTurnPlayer) {
+            hostCurrentTurnPlayer.textContent = data.playerName || 'Unknown';
+        }
+    });
 }
 
 // Setup event listeners
@@ -593,6 +662,27 @@ function setupEventListeners() {
             });
         }
     });
+
+    // Party mode controls
+    if (hostGiveTurnPlayer1Btn) {
+        hostGiveTurnPlayer1Btn.addEventListener('click', () => {
+            if (currentBattlePlayers[0]) {
+                socket.emit('partyGame:setTurn', { playerId: currentBattlePlayers[0].id });
+            }
+        });
+    }
+    if (hostGiveTurnPlayer2Btn) {
+        hostGiveTurnPlayer2Btn.addEventListener('click', () => {
+            if (currentBattlePlayers[1]) {
+                socket.emit('partyGame:setTurn', { playerId: currentBattlePlayers[1].id });
+            }
+        });
+    }
+    if (hostNextBattleBtn) {
+        hostNextBattleBtn.addEventListener('click', () => {
+            socket.emit('partyGame:nextBattle');
+        });
+    }
 }
 
 // Handle login

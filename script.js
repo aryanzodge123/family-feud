@@ -23,6 +23,13 @@ let isDisplayMode = false;
 let socket = null;
 let roomCode = null;
 
+// Party Mode State
+let isPartyMode = false;
+let partyPlayers = [];
+let currentBattlePlayers = [];
+let currentTurnPlayer = null;
+let faceOffActive = false;
+
 // Load questions from CSV file
 async function loadQuestionsFromCSV() {
     try {
@@ -300,6 +307,40 @@ const hostStatusText = document.getElementById('host-status-text');
 const backToModeBtn = document.getElementById('back-to-mode-btn');
 const howToPlayQrBtn = document.getElementById('how-to-play-qr-btn');
 
+// Party Mode Screen Elements
+const partyModeBtn = document.getElementById('party-mode-btn');
+const partyHostQrScreen = document.getElementById('party-host-qr-screen');
+const partyHostQrImg = document.getElementById('party-host-qr-img');
+const partyHostQrLoading = document.getElementById('party-host-qr-loading');
+const partyHostRoomCode = document.getElementById('party-host-room-code');
+const partyHostUrl = document.getElementById('party-host-url');
+const partyHostStatusIndicator = document.getElementById('party-host-status-indicator');
+const partyHostStatusText = document.getElementById('party-host-status-text');
+const partyBackToModeBtn = document.getElementById('party-back-to-mode-btn');
+const partyHostNextBtn = document.getElementById('party-host-next-btn');
+
+const partyPlayerJoinScreen = document.getElementById('party-player-join-screen');
+const partyPlayerQrImg = document.getElementById('party-player-qr-img');
+const partyPlayerQrLoading = document.getElementById('party-player-qr-loading');
+const partyPlayerRoomCode = document.getElementById('party-player-room-code');
+const partyPlayerList = document.getElementById('party-player-list');
+const partyPlayerBackBtn = document.getElementById('party-player-back-btn');
+const partyPlayerNextBtn = document.getElementById('party-player-next-btn');
+
+const partyTeamAssignmentScreen = document.getElementById('party-team-assignment-screen');
+const partyTeam1NameInput = document.getElementById('party-team1-name');
+const partyTeam2NameInput = document.getElementById('party-team2-name');
+const partyTeam1Players = document.getElementById('party-team1-players');
+const partyTeam2Players = document.getElementById('party-team2-players');
+const partyUnassignedPlayers = document.getElementById('party-unassigned-players');
+const partyTeamBackBtn = document.getElementById('party-team-back-btn');
+const partyStartGameBtn = document.getElementById('party-start-game-btn');
+const partyRoundBtns = document.querySelectorAll('.party-round-btn');
+
+const battlePopup = document.getElementById('battle-popup');
+const battlePlayer1Name = document.getElementById('battle-player1-name');
+const battlePlayer2Name = document.getElementById('battle-player2-name');
+
 // Login Screen Elements
 const loginScreen = document.getElementById('login-screen');
 const passwordInput = document.getElementById('password-input');
@@ -434,9 +475,19 @@ async function init() {
     // Mode selection event listeners
     singleDeviceBtn.addEventListener('click', startSingleDeviceMode);
     displayModeBtn.addEventListener('click', startDisplayMode);
+    partyModeBtn.addEventListener('click', startPartyMode);
     backToModeBtn.addEventListener('click', backToModeSelection);
     howToPlayModeBtn.addEventListener('click', openTutorialOverlay);
     howToPlayQrBtn.addEventListener('click', openTutorialFromQr);
+
+    // Party mode event listeners
+    partyBackToModeBtn.addEventListener('click', backToModeFromParty);
+    partyHostNextBtn.addEventListener('click', goToPartyPlayerJoin);
+    partyPlayerBackBtn.addEventListener('click', goBackToPartyHostQr);
+    partyPlayerNextBtn.addEventListener('click', goToPartyTeamAssignment);
+    partyTeamBackBtn.addEventListener('click', goBackToPartyPlayerJoin);
+    partyStartGameBtn.addEventListener('click', startPartyGame);
+    setupPartyRoundButtons();
     
     // Login screen event listeners
     loginBtn.addEventListener('click', handleLogin);
@@ -628,10 +679,10 @@ function backToModeSelection() {
     }
     roomCode = null;
     isDisplayMode = false;
-    
+
     qrScreen.style.display = 'none';
     modeScreen.style.display = 'flex';
-    
+
     // Reset QR screen
     qrCodeImg.style.display = 'none';
     qrLoading.style.display = 'block';
@@ -640,6 +691,623 @@ function backToModeSelection() {
     qrHostUrl.textContent = '';
     hostStatusIndicator.className = 'qr-status-indicator';
     hostStatusText.textContent = 'Waiting for host to connect...';
+}
+
+// ============ PARTY MODE FUNCTIONS ============
+
+// Start Party Mode
+async function startPartyMode() {
+    isPartyMode = true;
+    isDisplayMode = true; // Party mode is a type of display mode
+    modeScreen.style.display = 'none';
+    partyHostQrScreen.style.display = 'flex';
+
+    // Create a new room
+    try {
+        const response = await fetch('/api/create-room', { method: 'POST' });
+        const data = await response.json();
+        roomCode = data.roomCode;
+
+        partyHostRoomCode.textContent = roomCode;
+
+        // Get host QR code
+        const qrResponse = await fetch(`/api/qr-code?room=${roomCode}`);
+        const qrData = await qrResponse.json();
+
+        partyHostQrImg.src = qrData.qrCode;
+        partyHostQrImg.style.display = 'block';
+        partyHostQrLoading.style.display = 'none';
+        partyHostUrl.textContent = qrData.hostUrl;
+
+        // Initialize socket connection
+        initPartyDisplaySocket();
+
+    } catch (error) {
+        console.error('Error creating party room:', error);
+        partyHostQrLoading.textContent = 'Error creating room. Please try again.';
+    }
+}
+
+// Back to mode selection from party mode
+function backToModeFromParty() {
+    if (socket) {
+        socket.disconnect();
+        socket = null;
+    }
+    roomCode = null;
+    isPartyMode = false;
+    isDisplayMode = false;
+    partyPlayers = [];
+
+    partyHostQrScreen.style.display = 'none';
+    partyPlayerJoinScreen.style.display = 'none';
+    partyTeamAssignmentScreen.style.display = 'none';
+    modeScreen.style.display = 'flex';
+
+    // Reset party screens
+    resetPartyScreens();
+}
+
+// Reset party screens to initial state
+function resetPartyScreens() {
+    partyHostQrImg.style.display = 'none';
+    partyHostQrLoading.style.display = 'block';
+    partyHostQrLoading.textContent = 'Generating QR Code...';
+    partyHostRoomCode.textContent = '------';
+    partyHostNextBtn.style.display = 'none';
+    partyHostStatusIndicator.className = 'qr-status-indicator';
+    partyHostStatusText.textContent = 'Scan with your phone to become the host';
+
+    partyPlayerQrImg.style.display = 'none';
+    partyPlayerQrLoading.style.display = 'block';
+    partyPlayerRoomCode.textContent = '------';
+    partyPlayerList.innerHTML = '<div class="party-player-empty">Waiting for players...</div>';
+
+    partyTeam1Players.innerHTML = '<div class="team-players-empty">No players assigned</div>';
+    partyTeam2Players.innerHTML = '<div class="team-players-empty">No players assigned</div>';
+    partyUnassignedPlayers.innerHTML = '<div class="team-players-empty">No players waiting</div>';
+    partyTeam1NameInput.value = '';
+    partyTeam2NameInput.value = '';
+}
+
+// Go to player join screen
+async function goToPartyPlayerJoin() {
+    partyHostQrScreen.style.display = 'none';
+    partyPlayerJoinScreen.style.display = 'flex';
+
+    partyPlayerRoomCode.textContent = roomCode;
+
+    // Get player QR code
+    try {
+        const qrResponse = await fetch(`/api/player-qr-code?room=${roomCode}`);
+        const qrData = await qrResponse.json();
+
+        partyPlayerQrImg.src = qrData.qrCode;
+        partyPlayerQrImg.style.display = 'block';
+        partyPlayerQrLoading.style.display = 'none';
+    } catch (error) {
+        console.error('Error getting player QR code:', error);
+        partyPlayerQrLoading.textContent = 'Error generating QR code';
+    }
+}
+
+// Go back to host QR screen
+function goBackToPartyHostQr() {
+    partyPlayerJoinScreen.style.display = 'none';
+    partyHostQrScreen.style.display = 'flex';
+}
+
+// Go to team assignment screen
+function goToPartyTeamAssignment() {
+    partyPlayerJoinScreen.style.display = 'none';
+    partyTeamAssignmentScreen.style.display = 'flex';
+
+    // Render unassigned players
+    renderPartyTeamAssignment();
+}
+
+// Go back to player join screen
+function goBackToPartyPlayerJoin() {
+    partyTeamAssignmentScreen.style.display = 'none';
+    partyPlayerJoinScreen.style.display = 'flex';
+}
+
+// Setup party round buttons
+function setupPartyRoundButtons() {
+    partyRoundBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            partyRoundBtns.forEach(b => b.classList.remove('selected'));
+            btn.classList.add('selected');
+        });
+    });
+}
+
+// Render team assignment UI
+function renderPartyTeamAssignment() {
+    const team1PlayerIds = partyPlayers.filter(p => p.team === 1).map(p => p.id);
+    const team2PlayerIds = partyPlayers.filter(p => p.team === 2).map(p => p.id);
+    const unassignedPlayerIds = partyPlayers.filter(p => p.team === null).map(p => p.id);
+
+    // Render Team 1
+    if (team1PlayerIds.length === 0) {
+        partyTeam1Players.innerHTML = '<div class="team-players-empty">No players assigned</div>';
+    } else {
+        partyTeam1Players.innerHTML = partyPlayers
+            .filter(p => p.team === 1)
+            .map(p => `
+                <div class="team-player-card">
+                    <span class="player-name">${escapeHtml(p.name)}</span>
+                    <div class="assign-btns">
+                        <button class="assign-btn remove" onclick="assignPlayerToTeam('${p.id}', null)">Remove</button>
+                    </div>
+                </div>
+            `).join('');
+    }
+
+    // Render Team 2
+    if (team2PlayerIds.length === 0) {
+        partyTeam2Players.innerHTML = '<div class="team-players-empty">No players assigned</div>';
+    } else {
+        partyTeam2Players.innerHTML = partyPlayers
+            .filter(p => p.team === 2)
+            .map(p => `
+                <div class="team-player-card">
+                    <span class="player-name">${escapeHtml(p.name)}</span>
+                    <div class="assign-btns">
+                        <button class="assign-btn remove" onclick="assignPlayerToTeam('${p.id}', null)">Remove</button>
+                    </div>
+                </div>
+            `).join('');
+    }
+
+    // Render Unassigned
+    if (unassignedPlayerIds.length === 0) {
+        partyUnassignedPlayers.innerHTML = '<div class="team-players-empty">No players waiting</div>';
+    } else {
+        partyUnassignedPlayers.innerHTML = partyPlayers
+            .filter(p => p.team === null)
+            .map(p => `
+                <div class="team-player-card">
+                    <span class="player-name">${escapeHtml(p.name)}</span>
+                    <div class="assign-btns">
+                        <button class="assign-btn team1" onclick="assignPlayerToTeam('${p.id}', 1)">Team 1</button>
+                        <button class="assign-btn team2" onclick="assignPlayerToTeam('${p.id}', 2)">Team 2</button>
+                    </div>
+                </div>
+            `).join('');
+    }
+}
+
+// Assign player to team (called from buttons)
+function assignPlayerToTeam(playerId, team) {
+    if (socket) {
+        socket.emit('player:assignTeam', { playerId, team });
+    }
+}
+
+// Start party game
+function startPartyGame() {
+    const team1Name = partyTeam1NameInput.value.trim().toUpperCase() || 'TEAM 1';
+    const team2Name = partyTeam2NameInput.value.trim().toUpperCase() || 'TEAM 2';
+
+    // Get selected rounds
+    let totalRounds = 7;
+    const selectedBtn = document.querySelector('.party-round-btn.selected');
+    if (selectedBtn) {
+        totalRounds = parseInt(selectedBtn.dataset.rounds);
+    }
+
+    if (socket) {
+        socket.emit('partyGame:start', { team1Name, team2Name, totalRounds });
+    }
+}
+
+// Render player list in join screen
+function renderPartyPlayerList() {
+    if (partyPlayers.length === 0) {
+        partyPlayerList.innerHTML = '<div class="party-player-empty">Waiting for players...</div>';
+    } else {
+        partyPlayerList.innerHTML = partyPlayers
+            .map(p => `<div class="party-player-item">${escapeHtml(p.name)}</div>`)
+            .join('');
+    }
+}
+
+// Show battle popup
+function showBattlePopup(team1Player, team2Player) {
+    battlePlayer1Name.textContent = team1Player ? team1Player.name : '???';
+    battlePlayer2Name.textContent = team2Player ? team2Player.name : '???';
+    battlePopup.style.display = 'flex';
+
+    // Auto-hide after 3 seconds
+    setTimeout(() => {
+        battlePopup.style.display = 'none';
+    }, 3000);
+}
+
+// Initialize Socket.IO for party mode display
+function initPartyDisplaySocket() {
+    socket = io();
+
+    socket.on('connect', () => {
+        console.log('Party display connected to server');
+        socket.emit('display:join', roomCode);
+    });
+
+    socket.on('display:joined', (data) => {
+        console.log('Joined party room:', data.roomCode);
+    });
+
+    socket.on('host:connected', () => {
+        partyHostStatusIndicator.classList.add('connected');
+        partyHostStatusText.textContent = 'Host connected!';
+        partyHostNextBtn.style.display = 'block';
+    });
+
+    socket.on('host:disconnected', () => {
+        partyHostStatusIndicator.classList.remove('connected');
+        partyHostStatusText.textContent = 'Host disconnected. Waiting for reconnection...';
+        partyHostNextBtn.style.display = 'none';
+    });
+
+    // Player events
+    socket.on('players:updated', (data) => {
+        partyPlayers = data.players;
+        renderPartyPlayerList();
+        renderPartyTeamAssignment();
+    });
+
+    socket.on('teams:updated', (data) => {
+        partyPlayers = data.players;
+        renderPartyTeamAssignment();
+    });
+
+    // Party game started
+    socket.on('partyGame:started', (gameState) => {
+        partyTeamAssignmentScreen.style.display = 'none';
+        gameContainer.style.display = 'block';
+
+        // Apply game state
+        team1Name = gameState.team1Name;
+        team2Name = gameState.team2Name;
+        totalRounds = gameState.totalRounds;
+        currentRound = gameState.currentRound;
+        team1Score = gameState.team1Score;
+        team2Score = gameState.team2Score;
+
+        // Update UI
+        team1DisplayName.textContent = team1Name;
+        team2DisplayName.textContent = team2Name;
+        teamSelectOption1.textContent = team1Name;
+        teamSelectOption2.textContent = team2Name;
+        currentRoundEl.textContent = currentRound;
+        totalRoundsEl.textContent = totalRounds;
+        team1ScoreEl.textContent = team1Score;
+        team2ScoreEl.textContent = team2Score;
+
+        // Hide controls in party display mode
+        hideControlsForDisplayMode();
+    });
+
+    // Battle started
+    socket.on('battle:started', (data) => {
+        currentBattlePlayers = [data.team1Player, data.team2Player];
+        faceOffActive = data.faceOffActive;
+        showBattlePopup(data.team1Player, data.team2Player);
+    });
+
+    // Turn changed
+    socket.on('turn:changed', (data) => {
+        currentTurnPlayer = data.currentTurnPlayer;
+        faceOffActive = data.faceOffActive;
+    });
+
+    // Reuse display mode handlers for game events
+    socket.on('game:started', (gameState) => {
+        partyTeamAssignmentScreen.style.display = 'none';
+        gameContainer.style.display = 'block';
+
+        team1Name = gameState.team1Name;
+        team2Name = gameState.team2Name;
+        totalRounds = gameState.totalRounds;
+        currentRound = gameState.currentRound;
+        team1Score = gameState.team1Score;
+        team2Score = gameState.team2Score;
+
+        team1DisplayName.textContent = team1Name;
+        team2DisplayName.textContent = team2Name;
+        teamSelectOption1.textContent = team1Name;
+        teamSelectOption2.textContent = team2Name;
+        currentRoundEl.textContent = currentRound;
+        totalRoundsEl.textContent = totalRounds;
+        team1ScoreEl.textContent = team1Score;
+        team2ScoreEl.textContent = team2Score;
+
+        hideControlsForDisplayMode();
+    });
+
+    socket.on('question:loaded', (data) => {
+        currentQuestion = data.question;
+        revealedAnswers = [];
+        strikes = 0;
+        currentRevealIndex = 0;
+        roundPointsEarned = 0;
+        correctGuessesThisRound = [];
+
+        questionText.textContent = currentQuestion.question;
+        currentRoundEl.textContent = data.currentRound;
+        totalRoundsEl.textContent = data.totalRounds;
+        currentRound = data.currentRound;
+
+        answerSlots.forEach((slot, index) => {
+            slot.classList.remove('revealed');
+            const answerTextEl = slot.querySelector('.answer-text');
+            const answerPointsEl = slot.querySelector('.answer-points');
+
+            if (index < currentQuestion.answers.length) {
+                answerTextEl.textContent = '?';
+                answerPointsEl.textContent = '';
+            } else {
+                answerTextEl.textContent = '';
+                answerPointsEl.textContent = '';
+            }
+        });
+
+        updateStrikes();
+        entryLog = [];
+        renderEntryLog();
+    });
+
+    socket.on('answer:revealed', (data) => {
+        if (currentQuestion && data.index < currentQuestion.answers.length) {
+            revealAnswer(data.index);
+        }
+    });
+
+    socket.on('answer:correct', (data) => {
+        showCorrectFeedback();
+        if (currentQuestion && data.index < currentQuestion.answers.length) {
+            revealAnswer(data.index);
+        }
+        roundPointsEarned = data.roundPointsEarned;
+    });
+
+    socket.on('answer:incorrect', (data) => {
+        showIncorrectFeedback();
+        strikes = data.strikes;
+        updateStrikes();
+    });
+
+    socket.on('strike:updated', (data) => {
+        strikes = data.strikes;
+        updateStrikes();
+    });
+
+    socket.on('points:updated', (data) => {
+        team1Score = data.team1Score;
+        team2Score = data.team2Score;
+        team1ScoreEl.textContent = team1Score;
+        team2ScoreEl.textContent = team2Score;
+    });
+
+    socket.on('timer:started', (data) => {
+        timerSeconds = data.seconds;
+        timerRunning = true;
+        updateTimerDisplay();
+        startDisplayTimer();
+    });
+
+    socket.on('timer:paused', () => {
+        timerRunning = false;
+        stopDisplayTimer();
+    });
+
+    socket.on('timer:reset', (data) => {
+        timerSeconds = data.seconds;
+        timerRunning = false;
+        stopDisplayTimer();
+        updateTimerDisplay();
+    });
+
+    socket.on('timer:tick', (data) => {
+        timerSeconds = data.seconds;
+        updateTimerDisplay();
+    });
+
+    socket.on('timer:timesUp', () => {
+        timerRunning = false;
+        stopDisplayTimer();
+        showTimesUp();
+    });
+
+    socket.on('entryLog:updated', (data) => {
+        entryLog = data.entryLog;
+        renderEntryLog();
+    });
+
+    socket.on('entryLog:cleared', () => {
+        entryLog = [];
+        renderEntryLog();
+    });
+
+    socket.on('round:reset', () => {
+        revealedAnswers = [];
+        strikes = 0;
+        currentRevealIndex = 0;
+        roundPointsEarned = 0;
+        correctGuessesThisRound = [];
+
+        if (currentQuestion) {
+            answerSlots.forEach((slot, index) => {
+                slot.classList.remove('revealed');
+                const answerTextEl = slot.querySelector('.answer-text');
+                const answerPointsEl = slot.querySelector('.answer-points');
+
+                if (index < currentQuestion.answers.length) {
+                    answerTextEl.textContent = '?';
+                    answerPointsEl.textContent = '';
+                }
+            });
+        }
+
+        updateStrikes();
+        entryLog = [];
+        renderEntryLog();
+    });
+
+    socket.on('game:reset', (gameState) => {
+        gameContainer.style.display = 'none';
+        endScreen.style.display = 'none';
+
+        if (isPartyMode) {
+            partyHostQrScreen.style.display = 'flex';
+        } else {
+            qrScreen.style.display = 'flex';
+        }
+
+        currentQuestion = null;
+        revealedAnswers = [];
+        strikes = 0;
+        team1Score = 0;
+        team2Score = 0;
+        currentRound = 1;
+    });
+
+    socket.on('game:ended', (data) => {
+        gameContainer.style.display = 'none';
+        endScreen.style.display = 'flex';
+
+        team1Name = data.team1Name;
+        team2Name = data.team2Name;
+        team1Score = data.team1Score;
+        team2Score = data.team2Score;
+
+        const isTie = team1Score === team2Score;
+        const team1Wins = team1Score > team2Score;
+
+        if (isTie) {
+            winnerText.textContent = "IT'S A TIE!";
+            winnerText.classList.add('tie');
+        } else {
+            const winnerName = team1Wins ? team1Name : team2Name;
+            winnerText.textContent = `${winnerName} WINS!`;
+            winnerText.classList.remove('tie');
+        }
+
+        finalTeam1Name.textContent = team1Name;
+        finalTeam2Name.textContent = team2Name;
+        finalTeam1Score.textContent = team1Score;
+        finalTeam2Score.textContent = team2Score;
+
+        const team1Card = document.querySelector('.team-1-final');
+        const team2Card = document.querySelector('.team-2-final');
+        team1Card.classList.remove('winner');
+        team2Card.classList.remove('winner');
+
+        if (!isTie) {
+            if (team1Wins) {
+                team1Card.classList.add('winner');
+            } else {
+                team2Card.classList.add('winner');
+            }
+            startConfetti();
+            setTimeout(() => stopConfetti(), 3000);
+        }
+
+        playAgainBtn.style.display = 'none';
+    });
+
+    socket.on('round:summary', (data) => {
+        lastPointsAwarded = data.pointsAwarded;
+        lastWinningTeam = data.winningTeam;
+        team1Score = data.team1Score;
+        team2Score = data.team2Score;
+        correctGuessesThisRound = data.correctGuesses || [];
+
+        summaryRoundNumber.textContent = data.roundNumber;
+        summaryWinningTeam.textContent = data.winningTeamName;
+        summaryWinningTeam.className = 'points-awarded-team team-' + data.winningTeam;
+        summaryPointsValue.textContent = data.pointsAwarded;
+        summaryQuestion.textContent = '"' + data.question + '"';
+
+        if (correctGuessesThisRound.length > 0) {
+            summaryCorrectAnswers.innerHTML = correctGuessesThisRound.map(guess => `
+                <div class="stats-answer-item correct">
+                    <span class="stats-answer-rank">#${guess.rank || '?'}</span>
+                    <span class="stats-answer-text">${escapeHtml(guess.answer)}</span>
+                    <span class="stats-answer-points">${guess.points} pts</span>
+                </div>
+            `).join('');
+        } else {
+            summaryCorrectAnswers.innerHTML = '<div class="stats-no-answers">No answers were guessed correctly</div>';
+        }
+
+        const allAnswers = data.allAnswers || (currentQuestion ? currentQuestion.answers : []);
+        const serverRevealedAnswers = data.revealedAnswers || revealedAnswers;
+
+        if (allAnswers.length > 0) {
+            const missedAnswers = allAnswers
+                .map((answer, index) => ({ ...answer, rank: index + 1 }))
+                .filter((answer, index) => !serverRevealedAnswers.includes(index));
+
+            if (missedAnswers.length > 0) {
+                summaryMissedAnswers.innerHTML = missedAnswers.map(answer => `
+                    <div class="stats-answer-item missed">
+                        <span class="stats-answer-rank">#${answer.rank}</span>
+                        <span class="stats-answer-text">${escapeHtml(answer.text)}</span>
+                        <span class="stats-answer-points">${answer.points} pts</span>
+                    </div>
+                `).join('');
+            } else {
+                summaryMissedAnswers.innerHTML = '<div class="stats-no-answers stats-all-found">All answers were found!</div>';
+            }
+        }
+
+        summaryAnswersFound.textContent = `${correctGuessesThisRound.length} / ${data.totalAnswers}`;
+        summaryStrikes.textContent = data.strikes;
+        summaryTeam1Name.textContent = data.team1Name;
+        summaryTeam2Name.textContent = data.team2Name;
+        summaryTeam1Score.textContent = data.team1Score;
+        summaryTeam2Score.textContent = data.team2Score;
+
+        team1ScoreEl.textContent = data.team1Score;
+        team2ScoreEl.textContent = data.team2Score;
+
+        const team1Card = document.querySelector('.team-1-summary');
+        const team2Card = document.querySelector('.team-2-summary');
+        team1Card.classList.remove('winner');
+        team2Card.classList.remove('winner');
+        if (data.winningTeam === 1) {
+            team1Card.classList.add('winner');
+        } else {
+            team2Card.classList.add('winner');
+        }
+
+        if (data.currentRound >= data.totalRounds) {
+            nextRoundBtn.textContent = 'VIEW FINAL RESULTS';
+        } else {
+            nextRoundBtn.textContent = 'NEXT ROUND';
+        }
+
+        nextRoundBtn.style.display = 'none';
+        gameContainer.style.display = 'none';
+        roundSummaryScreen.style.display = 'flex';
+
+        startConfetti();
+        setTimeout(() => stopConfetti(), 2000);
+    });
+
+    socket.on('round:continue', () => {
+        roundSummaryScreen.style.display = 'none';
+        gameContainer.style.display = 'block';
+        hideControlsForDisplayMode();
+    });
+
+    socket.on('disconnect', () => {
+        console.log('Party display disconnected from server');
+        partyHostStatusIndicator.classList.remove('connected');
+        partyHostStatusText.textContent = 'Connection lost. Attempting to reconnect...';
+    });
 }
 
 // Initialize Socket.IO for display mode

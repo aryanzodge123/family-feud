@@ -79,7 +79,16 @@ function createGameRoom() {
             usedQuestionIndices: [],
             correctGuessesThisRound: [],
             lastWinningTeam: 0,
-            lastPointsAwarded: 0
+            lastPointsAwarded: 0,
+            // Party mode state
+            partyMode: false,
+            players: [],                    // { id, name, socketId, team }
+            team1Players: [],               // playerIds assigned to team 1
+            team2Players: [],               // playerIds assigned to team 2
+            currentBattlePlayers: [null, null], // [team1PlayerId, team2PlayerId]
+            currentTurnPlayer: null,        // playerId whose turn it is
+            playerTurnIndex: { team1: 0, team2: 0 },
+            faceOffActive: false            // true during face-off phase
         }
     };
     
@@ -271,12 +280,12 @@ const server = http.createServer((req, res) => {
             res.end(JSON.stringify({ error: 'Room code required' }));
             return;
         }
-        
+
         // Construct the host URL
         const protocol = req.headers['x-forwarded-proto'] || 'http';
         const host = req.headers.host;
         const hostUrl = `${protocol}://${host}/host.html?room=${roomCode}`;
-        
+
         QRCode.toDataURL(hostUrl, { width: 300, margin: 2 }, (err, dataUrl) => {
             if (err) {
                 res.writeHead(500, { 'Content-Type': 'application/json' });
@@ -285,6 +294,30 @@ const server = http.createServer((req, res) => {
             }
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ qrCode: dataUrl, hostUrl }));
+        });
+    }
+    // API endpoint to generate player QR code (party mode)
+    else if (url.pathname === '/api/player-qr-code' && req.method === 'GET') {
+        const roomCode = url.searchParams.get('room');
+        if (!roomCode) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Room code required' }));
+            return;
+        }
+
+        // Construct the player URL
+        const protocol = req.headers['x-forwarded-proto'] || 'http';
+        const host = req.headers.host;
+        const playerUrl = `${protocol}://${host}/player.html?room=${roomCode}`;
+
+        QRCode.toDataURL(playerUrl, { width: 300, margin: 2 }, (err, dataUrl) => {
+            if (err) {
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Failed to generate QR code' }));
+                return;
+            }
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ qrCode: dataUrl, playerUrl }));
         });
     }
     else {
@@ -851,17 +884,280 @@ io.on('connection', (socket) => {
     // Request full game state sync
     socket.on('requestState', () => {
         if (!socket.roomCode) return;
-        
+
         const room = getRoom(socket.roomCode);
         if (!room) return;
-        
+
         socket.emit('gameState:full', room.gameState);
     });
-    
+
+    // ============ PARTY MODE EVENTS ============
+
+    // Player joins party mode game
+    socket.on('player:join', ({ roomCode, playerName }) => {
+        const room = getRoom(roomCode);
+        if (!room) {
+            socket.emit('player:error', { message: 'Room not found' });
+            return;
+        }
+
+        // Generate unique player ID
+        const playerId = 'player_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+
+        const player = {
+            id: playerId,
+            name: playerName,
+            socketId: socket.id,
+            team: null
+        };
+
+        room.gameState.players.push(player);
+        socket.join(roomCode);
+        socket.roomCode = roomCode;
+        socket.isPlayer = true;
+        socket.playerId = playerId;
+
+        console.log(`Player ${playerName} (${playerId}) joined room ${roomCode}`);
+
+        // Confirm join to player
+        socket.emit('player:joined', {
+            playerId,
+            playerName,
+            gameState: room.gameState
+        });
+
+        // Notify everyone in room about updated player list
+        io.to(roomCode).emit('players:updated', {
+            players: room.gameState.players
+        });
+    });
+
+    // Host assigns player to team
+    socket.on('player:assignTeam', ({ playerId, team }) => {
+        if (!socket.isHost || !socket.roomCode) return;
+
+        const room = getRoom(socket.roomCode);
+        if (!room) return;
+
+        // Find the player
+        const player = room.gameState.players.find(p => p.id === playerId);
+        if (!player) return;
+
+        // Remove from old team if assigned
+        if (player.team === 1) {
+            room.gameState.team1Players = room.gameState.team1Players.filter(id => id !== playerId);
+        } else if (player.team === 2) {
+            room.gameState.team2Players = room.gameState.team2Players.filter(id => id !== playerId);
+        }
+
+        // Assign to new team
+        player.team = team;
+        if (team === 1) {
+            room.gameState.team1Players.push(playerId);
+        } else if (team === 2) {
+            room.gameState.team2Players.push(playerId);
+        }
+
+        // Notify everyone
+        io.to(socket.roomCode).emit('teams:updated', {
+            players: room.gameState.players,
+            team1Players: room.gameState.team1Players,
+            team2Players: room.gameState.team2Players
+        });
+    });
+
+    // Host starts party mode game
+    socket.on('partyGame:start', ({ team1Name, team2Name, totalRounds }) => {
+        if (!socket.isHost || !socket.roomCode) return;
+
+        const room = getRoom(socket.roomCode);
+        if (!room) return;
+
+        room.gameState.partyMode = true;
+        room.gameState.team1Name = team1Name || 'TEAM 1';
+        room.gameState.team2Name = team2Name || 'TEAM 2';
+        room.gameState.totalRounds = totalRounds || 7;
+        room.gameState.currentRound = 1;
+        room.gameState.team1Score = 0;
+        room.gameState.team2Score = 0;
+        room.gameState.screen = 'game';
+        room.gameState.usedQuestionIndices = [];
+        room.gameState.playerTurnIndex = { team1: 0, team2: 0 };
+
+        io.to(socket.roomCode).emit('partyGame:started', room.gameState);
+    });
+
+    // Host starts next battle (face-off between two players)
+    socket.on('partyGame:nextBattle', () => {
+        if (!socket.isHost || !socket.roomCode) return;
+
+        const room = getRoom(socket.roomCode);
+        if (!room) return;
+
+        const { team1Players, team2Players, playerTurnIndex, players } = room.gameState;
+
+        if (team1Players.length === 0 || team2Players.length === 0) {
+            socket.emit('partyGame:error', { message: 'Both teams need at least one player' });
+            return;
+        }
+
+        // Get next player from each team (wrapping around)
+        const team1Index = playerTurnIndex.team1 % team1Players.length;
+        const team2Index = playerTurnIndex.team2 % team2Players.length;
+
+        const team1PlayerId = team1Players[team1Index];
+        const team2PlayerId = team2Players[team2Index];
+
+        // Increment indices for next battle
+        room.gameState.playerTurnIndex.team1++;
+        room.gameState.playerTurnIndex.team2++;
+
+        room.gameState.currentBattlePlayers = [team1PlayerId, team2PlayerId];
+        room.gameState.faceOffActive = true;
+        room.gameState.currentTurnPlayer = null; // Both can answer during face-off
+
+        // Get player names for announcement
+        const team1Player = players.find(p => p.id === team1PlayerId);
+        const team2Player = players.find(p => p.id === team2PlayerId);
+
+        io.to(socket.roomCode).emit('battle:started', {
+            team1Player: team1Player ? { id: team1Player.id, name: team1Player.name } : null,
+            team2Player: team2Player ? { id: team2Player.id, name: team2Player.name } : null,
+            faceOffActive: true
+        });
+    });
+
+    // Host sets which player has the turn (after face-off)
+    socket.on('partyGame:setTurn', ({ playerId }) => {
+        if (!socket.isHost || !socket.roomCode) return;
+
+        const room = getRoom(socket.roomCode);
+        if (!room) return;
+
+        room.gameState.currentTurnPlayer = playerId;
+        room.gameState.faceOffActive = false;
+
+        const player = room.gameState.players.find(p => p.id === playerId);
+
+        io.to(socket.roomCode).emit('turn:changed', {
+            currentTurnPlayer: playerId,
+            playerName: player ? player.name : null,
+            faceOffActive: false
+        });
+    });
+
+    // Player submits answer
+    socket.on('player:submitAnswer', async ({ playerAnswer }) => {
+        if (!socket.isPlayer || !socket.roomCode) return;
+
+        const room = getRoom(socket.roomCode);
+        if (!room || !room.gameState.partyMode) return;
+
+        const playerId = socket.playerId;
+        const { currentBattlePlayers, currentTurnPlayer, faceOffActive } = room.gameState;
+
+        // Check if player is in current battle
+        if (!currentBattlePlayers.includes(playerId)) {
+            socket.emit('player:notYourTurn', { message: "You're not in the current battle" });
+            return;
+        }
+
+        // Check turn (if not face-off)
+        if (!faceOffActive && currentTurnPlayer !== playerId) {
+            socket.emit('player:notYourTurn', { message: "It's not your turn to answer yet!" });
+            return;
+        }
+
+        // Process the answer (similar to checkAnswer but from player)
+        if (!room.gameState.currentQuestion) {
+            socket.emit('player:error', { message: 'No question loaded' });
+            return;
+        }
+
+        const allAnswers = room.gameState.currentQuestion.answers.map(a => a.text);
+        const player = room.gameState.players.find(p => p.id === playerId);
+
+        try {
+            const response = await callOpenAI(
+                room.gameState.currentQuestion.question,
+                allAnswers,
+                playerAnswer
+            );
+
+            const chatResponse = response.choices[0].message.content.trim();
+            const cleanedResponse = chatResponse.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+            const jsonResponse = JSON.parse(cleanedResponse);
+
+            const isCorrect = jsonResponse.match && jsonResponse.matchedAnswer;
+
+            // Add to entry log
+            room.gameState.entryLog.push({
+                entry: playerAnswer,
+                isCorrect,
+                playerName: player ? player.name : 'Unknown',
+                playerId,
+                timestamp: new Date()
+            });
+
+            // Send result to player
+            socket.emit('player:answerResult', {
+                playerAnswer,
+                ...jsonResponse
+            });
+
+            if (isCorrect) {
+                const matchedIndex = room.gameState.currentQuestion.answers.findIndex(
+                    ans => ans.text.toLowerCase() === jsonResponse.matchedAnswer.toLowerCase()
+                );
+
+                if (matchedIndex !== -1 && !room.gameState.revealedAnswers.includes(matchedIndex)) {
+                    room.gameState.revealedAnswers.push(matchedIndex);
+                    const answer = room.gameState.currentQuestion.answers[matchedIndex];
+                    const points = answer.points;
+                    room.gameState.roundPointsEarned += points;
+
+                    if (!room.gameState.correctGuessesThisRound) {
+                        room.gameState.correctGuessesThisRound = [];
+                    }
+                    room.gameState.correctGuessesThisRound.push({
+                        answer: answer.text,
+                        points: points,
+                        playerName: player ? player.name : 'Unknown'
+                    });
+
+                    io.to(socket.roomCode).emit('answer:correct', {
+                        index: matchedIndex,
+                        answerText: answer.text,
+                        points,
+                        roundPointsEarned: room.gameState.roundPointsEarned,
+                        playerName: player ? player.name : 'Unknown'
+                    });
+                }
+            } else {
+                if (room.gameState.strikes < 3) {
+                    room.gameState.strikes++;
+                }
+
+                io.to(socket.roomCode).emit('answer:incorrect', {
+                    strikes: room.gameState.strikes,
+                    playerName: player ? player.name : 'Unknown'
+                });
+            }
+
+            io.to(socket.roomCode).emit('entryLog:updated', {
+                entryLog: room.gameState.entryLog
+            });
+
+        } catch (error) {
+            console.error('Error checking player answer:', error);
+            socket.emit('player:error', { message: error.message });
+        }
+    });
+
     // Handle disconnection
     socket.on('disconnect', () => {
         console.log('Client disconnected:', socket.id);
-        
+
         if (socket.roomCode) {
             const room = getRoom(socket.roomCode);
             if (room) {
@@ -872,6 +1168,22 @@ io.on('connection', (socket) => {
                 if (socket.isHost) {
                     room.hostSocketId = null;
                     io.to(socket.roomCode).emit('host:disconnected', { reason: 'Host disconnected' });
+                }
+                if (socket.isPlayer && socket.playerId) {
+                    // Remove player from room
+                    room.gameState.players = room.gameState.players.filter(p => p.id !== socket.playerId);
+                    room.gameState.team1Players = room.gameState.team1Players.filter(id => id !== socket.playerId);
+                    room.gameState.team2Players = room.gameState.team2Players.filter(id => id !== socket.playerId);
+
+                    // Notify everyone
+                    io.to(socket.roomCode).emit('players:updated', {
+                        players: room.gameState.players
+                    });
+                    io.to(socket.roomCode).emit('teams:updated', {
+                        players: room.gameState.players,
+                        team1Players: room.gameState.team1Players,
+                        team2Players: room.gameState.team2Players
+                    });
                 }
             }
         }

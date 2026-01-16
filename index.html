@@ -19,11 +19,17 @@
                     <span class="mode-title">Single Device</span>
                     <span class="mode-desc">Control and display on the same screen</span>
                 </button>
-                
+
                 <button type="button" id="display-mode-btn" class="mode-btn">
                     <span class="mode-icon">📺</span>
                     <span class="mode-title">Display Mode</span>
                     <span class="mode-desc">This screen shows the game, host controls from phone</span>
+                </button>
+
+                <button type="button" id="party-mode-btn" class="mode-btn">
+                    <span class="mode-icon">🎉</span>
+                    <span class="mode-title">Party Mode</span>
+                    <span class="mode-desc">Players join with their phones</span>
                 </button>
             </div>
             
@@ -64,6 +70,143 @@
                     <span class="play-icon">❓</span>
                     <span class="play-text">How to Play</span>
                 </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Party Mode: Host QR Screen -->
+    <div id="party-host-qr-screen" class="qr-screen" style="display: none;">
+        <div class="qr-container">
+            <h1 class="qr-logo">FAMILY FEUD</h1>
+            <p class="qr-subtitle">Party Mode - Host Setup</p>
+
+            <div class="qr-code-wrapper">
+                <img id="party-host-qr-img" class="qr-code-img" src="" alt="QR Code">
+                <div id="party-host-qr-loading" class="qr-loading">Generating QR Code...</div>
+            </div>
+
+            <div class="qr-info">
+                <p class="qr-room-label">Room Code:</p>
+                <p class="qr-room-code" id="party-host-room-code">------</p>
+                <p class="qr-host-url" id="party-host-url"></p>
+            </div>
+
+            <div class="qr-status">
+                <div class="qr-status-indicator" id="party-host-status-indicator"></div>
+                <span id="party-host-status-text">Scan with your phone to become the host</span>
+            </div>
+
+            <div class="qr-buttons">
+                <button type="button" id="party-back-to-mode-btn" class="back-btn">
+                    ← Back
+                </button>
+                <button type="button" id="party-host-next-btn" class="continue-btn" style="display: none;">
+                    Next →
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Party Mode: Player Join Screen -->
+    <div id="party-player-join-screen" class="qr-screen" style="display: none;">
+        <div class="qr-container">
+            <h1 class="qr-logo">FAMILY FEUD</h1>
+            <p class="qr-subtitle">Party Mode - Players Join</p>
+
+            <div class="qr-code-wrapper">
+                <img id="party-player-qr-img" class="qr-code-img" src="" alt="QR Code">
+                <div id="party-player-qr-loading" class="qr-loading">Generating QR Code...</div>
+            </div>
+
+            <div class="qr-info">
+                <p class="qr-room-label">Room Code:</p>
+                <p class="qr-room-code" id="party-player-room-code">------</p>
+            </div>
+
+            <div class="party-player-list-container">
+                <p class="party-player-list-label">Players Joined:</p>
+                <div class="party-player-list" id="party-player-list">
+                    <div class="party-player-empty">Waiting for players...</div>
+                </div>
+            </div>
+
+            <div class="qr-buttons">
+                <button type="button" id="party-player-back-btn" class="back-btn">
+                    ← Back
+                </button>
+                <button type="button" id="party-player-next-btn" class="continue-btn">
+                    Next →
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Party Mode: Team Assignment Screen -->
+    <div id="party-team-assignment-screen" class="setup-screen" style="display: none;">
+        <div class="setup-container party-setup-container">
+            <h1 class="setup-logo">FAMILY FEUD</h1>
+            <p class="setup-subtitle">Assign Players to Teams</p>
+
+            <div class="team-assignment-grid">
+                <div class="team-column team-1-column">
+                    <h2 class="team-column-title">Team 1</h2>
+                    <input type="text" id="party-team1-name" class="team-name-input" placeholder="Team 1 Name" maxlength="20">
+                    <div class="team-players-list" id="party-team1-players">
+                        <div class="team-players-empty">No players assigned</div>
+                    </div>
+                </div>
+
+                <div class="unassigned-column">
+                    <h2 class="team-column-title">Unassigned</h2>
+                    <div class="unassigned-players-list" id="party-unassigned-players">
+                        <div class="team-players-empty">No players waiting</div>
+                    </div>
+                </div>
+
+                <div class="team-column team-2-column">
+                    <h2 class="team-column-title">Team 2</h2>
+                    <input type="text" id="party-team2-name" class="team-name-input" placeholder="Team 2 Name" maxlength="20">
+                    <div class="team-players-list" id="party-team2-players">
+                        <div class="team-players-empty">No players assigned</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="setup-section">
+                <label class="setup-label">Number of Rounds</label>
+                <div class="rounds-selector">
+                    <button type="button" class="round-btn party-round-btn" data-rounds="3">3</button>
+                    <button type="button" class="round-btn party-round-btn" data-rounds="5">5</button>
+                    <button type="button" class="round-btn party-round-btn selected" data-rounds="7">7</button>
+                    <button type="button" class="round-btn party-round-btn" data-rounds="10">10</button>
+                </div>
+            </div>
+
+            <div class="setup-buttons">
+                <button type="button" id="party-team-back-btn" class="back-btn">
+                    ← Back
+                </button>
+                <button type="button" id="party-start-game-btn" class="start-game-btn">
+                    START GAME
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Battle Announcement Popup -->
+    <div id="battle-popup" class="battle-popup" style="display: none;">
+        <div class="battle-popup-content">
+            <h2 class="battle-popup-title">FACE-OFF!</h2>
+            <div class="battle-players">
+                <div class="battle-player team-1-battle">
+                    <span class="battle-player-name" id="battle-player1-name">Player 1</span>
+                    <span class="battle-player-team">Team 1</span>
+                </div>
+                <div class="battle-vs">VS</div>
+                <div class="battle-player team-2-battle">
+                    <span class="battle-player-name" id="battle-player2-name">Player 2</span>
+                    <span class="battle-player-team">Team 2</span>
+                </div>
             </div>
         </div>
     </div>
