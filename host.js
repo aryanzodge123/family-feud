@@ -3,6 +3,8 @@
 // Socket connection
 let socket = null;
 let roomCode = null;
+let savedRoomCode = null;  // For reconnection
+let savedPassword = null;  // For reconnection
 let gameData = [];
 let currentQuestion = null;
 let revealedAnswers = [];
@@ -12,6 +14,8 @@ let timerRunning = false;
 let roundPointsEarned = 0;
 let usedQuestionIndices = [];
 let correctGuessesThisRound = []; // Track correct guesses for round summary
+let showingSummary = false; // Track if we're on summary screen
+let authTimeout = null; // Timeout for authentication response
 
 // Party mode state
 let isPartyMode = false;
@@ -19,6 +23,7 @@ let partyPlayers = [];
 let currentBattlePlayers = [null, null];
 let currentTurnPlayer = null;
 let faceOffActive = false;
+let partyScreen = 'qr'; // qr, lobby, teams, game
 
 // DOM Elements
 const connectionBar = document.getElementById('connection-bar');
@@ -64,27 +69,16 @@ const revealBtns = document.querySelectorAll('.reveal-btn');
 
 // Control Buttons
 const hostNewQuestionBtn = document.getElementById('host-new-question-btn');
-const hostRevealNextBtn = document.getElementById('host-reveal-next-btn');
 const hostAddStrikeBtn = document.getElementById('host-add-strike-btn');
 const hostRemoveStrikeBtn = document.getElementById('host-remove-strike-btn');
-const hostPointsInput = document.getElementById('host-points-input');
-const hostRoundPoints = document.getElementById('host-round-points');
-const hostAwardTeam1Btn = document.getElementById('host-award-team1-btn');
-const hostAwardTeam2Btn = document.getElementById('host-award-team2-btn');
 const hostNextRoundBtn = document.getElementById('host-next-round-btn');
 const hostResetRoundBtn = document.getElementById('host-reset-round-btn');
 const hostEndGameBtn = document.getElementById('host-end-game-btn');
 
-// Answer Check Elements
-const hostAnswerInput = document.getElementById('host-answer-input');
-const hostCheckAnswerBtn = document.getElementById('host-check-answer-btn');
-const hostAnswerResult = document.getElementById('host-answer-result');
-const hostAnswerChecking = document.getElementById('host-answer-checking');
-const resultHeader = document.getElementById('result-header');
-const resultMatch = document.getElementById('result-match');
-const resultMatchedAnswer = document.getElementById('result-matched-answer');
-const resultConfidence = document.getElementById('result-confidence');
-const resultReason = document.getElementById('result-reason');
+// Panel Toggle Buttons
+const hostHowToPlayBtn = document.getElementById('host-how-to-play-btn');
+const hostShowPlayersBtn = document.getElementById('host-show-players-btn');
+const hostJoinGameBtn = document.getElementById('host-join-game-btn');
 
 // Timer Elements
 const hostTimerDisplay = document.getElementById('host-timer-display');
@@ -107,6 +101,14 @@ const hostCustomRounds = document.getElementById('host-custom-rounds');
 const hostStartGameBtn = document.getElementById('host-start-game-btn');
 const hostSetupHelpBtn = document.getElementById('host-setup-help-btn');
 
+// Timer Config Elements
+const autoTimerToggle = document.getElementById('auto-timer-toggle');
+const timerInputsContainer = document.getElementById('timer-inputs');
+const buzzerTimeInput = document.getElementById('buzzer-time-input');
+const afterBuzzerTimeInput = document.getElementById('after-buzzer-time-input');
+const regularTimeInput = document.getElementById('regular-time-input');
+const stealTimeInput = document.getElementById('steal-time-input');
+
 // Navigation Elements
 const hostNavSetupBtn = document.getElementById('host-nav-setup-btn');
 const hostNavGameBtn = document.getElementById('host-nav-game-btn');
@@ -117,16 +119,33 @@ const disconnectedOverlay = document.getElementById('disconnected-overlay');
 const disconnectReason = document.getElementById('disconnect-reason');
 const reconnectBtn = document.getElementById('reconnect-btn');
 
-// Party Mode Elements
-const partyTab = document.querySelector('.party-tab');
-const hostBattlePlayer1 = document.getElementById('host-battle-player1');
-const hostBattlePlayer2 = document.getElementById('host-battle-player2');
-const hostCurrentTurnPlayer = document.getElementById('host-current-turn-player');
-const hostGiveTurnPlayer1Btn = document.getElementById('host-give-turn-player1-btn');
-const hostGiveTurnPlayer2Btn = document.getElementById('host-give-turn-player2-btn');
-const hostTurnPlayer1Name = document.getElementById('host-turn-player1-name');
-const hostTurnPlayer2Name = document.getElementById('host-turn-player2-name');
-const hostNextBattleBtn = document.getElementById('host-next-battle-btn');
+// Party Mode Elements (Turn tab removed, only persistent status bar remains)
+
+// Persistent Turn Status Bar (in header)
+const hostTurnStatusBar = document.getElementById('host-turn-status-bar');
+const hostTurnDisplay = document.getElementById('host-turn-display');
+
+// Team Management Elements (Party Mode)
+const teamsTab = document.querySelector('.teams-tab');
+const hostManageTeam1Title = document.getElementById('host-manage-team1-title');
+const hostManageTeam2Title = document.getElementById('host-manage-team2-title');
+const hostManageTeam1List = document.getElementById('host-manage-team1-list');
+const hostManageTeam2List = document.getElementById('host-manage-team2-list');
+const hostManageUnassignedList = document.getElementById('host-manage-unassigned-list');
+
+// Inline Team Management (in setup controls)
+const hostSetupTeams = document.getElementById('host-setup-teams');
+const hostSetupTeam1Title = document.getElementById('host-setup-team1-title');
+const hostSetupTeam2Title = document.getElementById('host-setup-team2-title');
+const hostSetupTeam1List = document.getElementById('host-setup-team1-list');
+const hostSetupTeam2List = document.getElementById('host-setup-team2-list');
+const hostSetupUnassignedList = document.getElementById('host-setup-unassigned-list');
+
+// Party Flow Control Elements
+const partyFlowControl = document.getElementById('party-flow-control');
+const hostPartyNextBtn = document.getElementById('host-party-next-btn');
+const hostPartyNextText = document.getElementById('host-party-next-text');
+const hostPartyBackBtn = document.getElementById('host-party-back-btn');
 
 // Initialize
 async function init() {
@@ -212,30 +231,81 @@ async function loadQuestionsFromCSV() {
     }
 }
 
+// Safe emit - checks connection before sending
+function safeEmit(event, data) {
+    if (!socket || !socket.connected) {
+        updateConnectionStatus('disconnected', 'Not connected. Waiting for reconnection...');
+        return false;
+    }
+    socket.emit(event, data);
+    return true;
+}
+
 // Initialize Socket.IO connection
 function initSocket() {
-    socket = io();
-    
+    socket = io({
+        reconnection: true,
+        reconnectionAttempts: 10,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000
+    });
+
     socket.on('connect', () => {
         updateConnectionStatus('connecting', 'Connected to server');
     });
-    
+
+    socket.on('reconnect', (attemptNumber) => {
+        console.log('Reconnected to server after', attemptNumber, 'attempts');
+        // Re-authenticate if we have saved credentials
+        if (savedRoomCode && savedPassword) {
+            updateConnectionStatus('connecting', 'Reconnected. Re-authenticating...');
+            socket.emit('host:authenticate', {
+                roomCode: savedRoomCode,
+                password: savedPassword
+            });
+        }
+    });
+
+    socket.on('reconnect_attempt', (attemptNumber) => {
+        updateConnectionStatus('connecting', `Reconnecting... (attempt ${attemptNumber})`);
+    });
+
+    socket.on('reconnect_failed', () => {
+        updateConnectionStatus('disconnected', 'Reconnection failed. Please refresh.');
+        showDisconnectedOverlay('Unable to reconnect. Please refresh the page.');
+    });
+
     socket.on('disconnect', () => {
-        updateConnectionStatus('disconnected', 'Disconnected from server');
-        showDisconnectedOverlay('Connection lost. Please reconnect.');
+        updateConnectionStatus('disconnected', 'Disconnected. Attempting to reconnect...');
     });
     
     socket.on('host:authResult', (data) => {
+        // Clear auth timeout
+        if (authTimeout) {
+            clearTimeout(authTimeout);
+            authTimeout = null;
+        }
+
         if (data.success) {
             roomCode = roomCodeInput.value.toUpperCase();
+            // Save credentials for reconnection
+            savedRoomCode = roomCode;
+            savedPassword = hostPasswordInput.value;
             updateConnectionStatus('connected', `Connected to room ${roomCode}`);
             hostLoginScreen.style.display = 'none';
             hostControlScreen.style.display = 'block';
-            
-            // Apply game state if provided
+
+            // Apply game state if provided (restores scores, teams, etc.)
             if (data.gameState) {
                 applyGameState(data.gameState);
+
+                if (data.gameState.partyScreen) {
+                    partyScreen = data.gameState.partyScreen;
+                }
             }
+
+            // Always show setup controls first after login
+            showSetupControls();
         } else {
             if (data.canTakeOver) {
                 takeOverModal.style.display = 'flex';
@@ -252,6 +322,7 @@ function initSocket() {
     
     socket.on('gameState:full', (gameState) => {
         applyGameState(gameState);
+        // Don't switch screens - host should stay on current screen
     });
     
     socket.on('game:started', (gameState) => {
@@ -276,10 +347,6 @@ function initSocket() {
         
         // Reset strikes display
         updateStrikesDisplay(0);
-        
-        // Reset points
-        hostPointsInput.value = 0;
-        hostRoundPoints.textContent = '(Round: 0)';
     });
     
     socket.on('answer:revealed', (data) => {
@@ -289,35 +356,13 @@ function initSocket() {
         updateAnswerPreview();
     });
     
-    socket.on('answer:result', (data) => {
-        hostAnswerChecking.style.display = 'none';
-        hostAnswerResult.style.display = 'block';
-        hostCheckAnswerBtn.disabled = false;
-        
-        resultMatch.textContent = data.match ? 'Yes ✓' : 'No ✗';
-        resultMatchedAnswer.textContent = data.matchedAnswer || '-';
-        resultConfidence.textContent = data.confidence || '-';
-        resultReason.textContent = data.reason || '-';
-        
-        if (data.match) {
-            resultHeader.textContent = '✓ CORRECT!';
-            resultHeader.className = 'result-header correct';
-        } else {
-            resultHeader.textContent = '✗ INCORRECT';
-            resultHeader.className = 'result-header incorrect';
-        }
-        
-        hostAnswerInput.value = '';
-    });
     
     socket.on('answer:correct', (data) => {
         if (!revealedAnswers.includes(data.index)) {
             revealedAnswers.push(data.index);
         }
         roundPointsEarned = data.roundPointsEarned;
-        hostPointsInput.value = roundPointsEarned;
-        hostRoundPoints.textContent = `(Round: ${roundPointsEarned})`;
-        
+
         // Track correct guess for round summary
         if (data.answerText) {
             correctGuessesThisRound.push({
@@ -325,7 +370,7 @@ function initSocket() {
                 points: data.points
             });
         }
-        
+
         updateAnswerPreview();
     });
     
@@ -333,14 +378,6 @@ function initSocket() {
         updateStrikesDisplay(data.strikes);
     });
     
-    socket.on('answer:error', (data) => {
-        hostAnswerChecking.style.display = 'none';
-        hostAnswerResult.style.display = 'block';
-        resultHeader.textContent = 'Error';
-        resultHeader.className = 'result-header incorrect';
-        resultReason.textContent = data.error;
-        hostCheckAnswerBtn.disabled = false;
-    });
     
     socket.on('strike:updated', (data) => {
         updateStrikesDisplay(data.strikes);
@@ -383,56 +420,83 @@ function initSocket() {
     });
     
     socket.on('round:reset', () => {
+        showingSummary = false;
+        updateNextRoundButtonText();
         revealedAnswers = [];
         roundPointsEarned = 0;
-        hostPointsInput.value = 0;
-        hostRoundPoints.textContent = '(Round: 0)';
         updateStrikesDisplay(0);
         updateAnswerPreview();
         renderEntryLog([]);
+
+        // Re-enable buttons after reset
+        hostNewQuestionBtn.disabled = false;
+        hostAddStrikeBtn.disabled = false;
+        hostRemoveStrikeBtn.disabled = false;
     });
     
     socket.on('game:reset', (gameState) => {
+        showingSummary = false;
+        updateNextRoundButtonText();
+        resetGameDisplay();  // Clear all game UI to fresh state
         applyGameState(gameState);
+
+        // Hide turn status bar on reset
+        if (hostTurnStatusBar) {
+            hostTurnStatusBar.style.display = 'none';
+        }
+
+        // If party mode with players, set flags before showing setup controls
+        if (gameState.players && gameState.players.length > 0) {
+            partyPlayers = gameState.players;
+            partyScreen = gameState.partyScreen || 'qr';
+            isPartyMode = true;
+            renderHostManageTeams();
+        }
+
         showSetupControls();
     });
     
     socket.on('game:ended', (data) => {
+        showingSummary = false;
         const winner = data.team1Score > data.team2Score ? data.team1Name :
                        data.team2Score > data.team1Score ? data.team2Name : 'TIE';
         alert(`Game Over!\n\nWinner: ${winner}\n\n${data.team1Name}: ${data.team1Score}\n${data.team2Name}: ${data.team2Score}`);
     });
     
     socket.on('round:summary', (data) => {
+        stopLocalTimer();
+        socket.emit('timer:pause');  // Notify players to stop their timers
         // Update scores on host
         hostTeam1Score.textContent = data.team1Score;
         hostTeam2Score.textContent = data.team2Score;
-        
-        // Show round summary message
-        const summaryMsg = `Round ${data.roundNumber} Complete!\n\n` +
-            `${data.winningTeamName} earned ${data.pointsAwarded} points!\n\n` +
-            `Correct Guesses: ${data.correctGuesses.length} / ${data.totalAnswers}\n` +
-            `Strikes: ${data.strikes}\n\n` +
-            `Current Scores:\n${data.team1Name}: ${data.team1Score}\n${data.team2Name}: ${data.team2Score}`;
-        
-        // Show continue button or prompt
-        setTimeout(() => {
-            if (data.currentRound >= data.totalRounds) {
-                if (confirm(summaryMsg + '\n\nThis was the final round! View final results?')) {
-                    socket.emit('continueFromSummary');
-                }
-            } else {
-                if (confirm(summaryMsg + '\n\nContinue to next round?')) {
-                    socket.emit('continueFromSummary');
-                }
-            }
-        }, 500);
+
+        // Set flag to indicate we're on summary screen
+        // Host can click "Next Round" again to continue
+        showingSummary = true;
+        updateNextRoundButtonText();
+
+        // Disable buttons during round summary
+        hostNewQuestionBtn.disabled = true;
+        hostAddStrikeBtn.disabled = true;
+        hostRemoveStrikeBtn.disabled = true;
     });
     
     socket.on('round:continue', () => {
         // Game continues - auto-load next question with round increment
+        showingSummary = false;
+        updateNextRoundButtonText();
         correctGuessesThisRound = [];
         loadNewQuestion(true); // Increment round when continuing from summary
+
+        // Re-enable buttons for new round
+        hostNewQuestionBtn.disabled = false;
+        hostAddStrikeBtn.disabled = false;
+        hostRemoveStrikeBtn.disabled = false;
+
+        // Auto-start next face-off in party mode
+        if (isPartyMode) {
+            socket.emit('partyGame:nextBattle');
+        }
     });
     
     socket.on('gameState:update', (data) => {
@@ -449,41 +513,95 @@ function initSocket() {
 
     socket.on('players:updated', (data) => {
         partyPlayers = data.players;
+        renderHostManageTeams();
+        renderInlineTeams();
     });
 
     socket.on('teams:updated', (data) => {
         partyPlayers = data.players;
+        renderHostManageTeams();
+        renderInlineTeams();
     });
 
     socket.on('partyGame:started', (gameState) => {
         isPartyMode = true;
-        // Show party tab
-        if (partyTab) {
-            partyTab.style.display = 'flex';
+        partyScreen = 'game';
+        showingSummary = false;
+        updateNextRoundButtonText();
+        // Show teams tab for party mode
+        if (teamsTab) {
+            teamsTab.style.display = 'flex';
+        }
+        // Show persistent turn status bar
+        if (hostTurnStatusBar) {
+            hostTurnStatusBar.style.display = 'block';
+        }
+        // Hide flow control and inline teams when game starts
+        if (partyFlowControl) {
+            partyFlowControl.style.display = 'none';
+        }
+        if (hostSetupTeams) {
+            hostSetupTeams.style.display = 'none';
         }
         applyGameState(gameState);
         showGameControls();
+        renderHostManageTeams();
+    });
+
+    // When countdown finishes, auto-start the first face-off
+    socket.on('countdown:completed', () => {
+        if (isPartyMode) {
+            socket.emit('partyGame:nextBattle');
+        }
+    });
+
+    socket.on('partyScreen:updated', (data) => {
+        partyScreen = data.screen;
+        updatePartyFlowControl();
+
+        // Show inline teams management when on teams screen
+        if (hostSetupTeams) {
+            if (data.screen === 'teams') {
+                hostSetupTeams.style.display = 'block';
+                renderHostManageTeams();
+                renderInlineTeams();
+            } else {
+                hostSetupTeams.style.display = 'none';
+            }
+        }
+
+        // Also show Teams tab for later access
+        if (data.screen === 'teams') {
+            if (teamsTab) {
+                teamsTab.style.display = 'flex';
+            }
+        }
+    });
+
+    // Timer config updated from server
+    socket.on('timerConfig:updated', (data) => {
+        // Update local inputs to match server state
+        if (autoTimerToggle) autoTimerToggle.checked = data.enabled;
+        if (buzzerTimeInput) buzzerTimeInput.value = data.buzzerTime;
+        if (afterBuzzerTimeInput) afterBuzzerTimeInput.value = data.afterBuzzerTime;
+        if (regularTimeInput) regularTimeInput.value = data.regularTime;
+        if (stealTimeInput) stealTimeInput.value = data.stealTime;
+
+        // Show/hide timer inputs based on enabled state
+        if (timerInputsContainer) {
+            timerInputsContainer.classList.toggle('hidden', !data.enabled);
+        }
     });
 
     socket.on('battle:started', (data) => {
         currentBattlePlayers = [data.team1Player, data.team2Player];
         faceOffActive = data.faceOffActive;
 
-        // Update battle display
-        if (hostBattlePlayer1) {
-            hostBattlePlayer1.textContent = data.team1Player ? data.team1Player.name : '-';
-        }
-        if (hostBattlePlayer2) {
-            hostBattlePlayer2.textContent = data.team2Player ? data.team2Player.name : '-';
-        }
-        if (hostTurnPlayer1Name) {
-            hostTurnPlayer1Name.textContent = data.team1Player ? data.team1Player.name : 'Player 1';
-        }
-        if (hostTurnPlayer2Name) {
-            hostTurnPlayer2Name.textContent = data.team2Player ? data.team2Player.name : 'Player 2';
-        }
-        if (hostCurrentTurnPlayer) {
-            hostCurrentTurnPlayer.textContent = faceOffActive ? 'Face-off in progress' : '-';
+        const p1Name = data.team1Player ? data.team1Player.name : '???';
+        const p2Name = data.team2Player ? data.team2Player.name : '???';
+        const turnText = faceOffActive ? `Face Off: ${p1Name} vs ${p2Name}` : 'Current Turn: -';
+        if (hostTurnDisplay) {
+            hostTurnDisplay.textContent = turnText;
         }
     });
 
@@ -491,9 +609,59 @@ function initSocket() {
         currentTurnPlayer = data.currentTurnPlayer;
         faceOffActive = data.faceOffActive;
 
-        if (hostCurrentTurnPlayer) {
-            hostCurrentTurnPlayer.textContent = data.playerName || 'Unknown';
+        const playerName = data.currentTurnPlayerName || data.playerName || '-';
+        const turnText = `Current Turn: ${playerName}`;
+        if (hostTurnDisplay) {
+            hostTurnDisplay.textContent = turnText;
         }
+    });
+
+    // Face-off chain: next player's turn
+    socket.on('faceOff:chainNext', (data) => {
+        currentTurnPlayer = data.nextPlayerId;
+        const turnText = `${data.nextPlayerName} answer!`;
+        if (hostTurnDisplay) {
+            hostTurnDisplay.textContent = turnText;
+        }
+    });
+
+    // Face-off won: a team won the face-off
+    socket.on('faceOff:won', (data) => {
+        currentTurnPlayer = data.nextPlayerId;
+        faceOffActive = false;
+        const turnText = `Current Turn: ${data.nextPlayerName}`;
+        if (hostTurnDisplay) {
+            hostTurnDisplay.textContent = turnText;
+        }
+    });
+
+    // Steal phase handlers
+    socket.on('steal:phase', (data) => {
+        const teamName = data.stealingTeamName || `Team ${data.stealingTeam || '?'}`;
+        const turnText = `${teamName} is trying to steal!`;
+        if (hostTurnDisplay) {
+            hostTurnDisplay.textContent = turnText;
+        }
+    });
+
+    socket.on('steal:success', (data) => {
+        stopLocalTimer();
+        const turnText = 'Steal SUCCESS!';
+        if (hostTurnDisplay) {
+            hostTurnDisplay.textContent = turnText;
+        }
+    });
+
+    socket.on('steal:failed', (data) => {
+        stopLocalTimer();
+        const turnText = 'Steal FAILED!';
+        if (hostTurnDisplay) {
+            hostTurnDisplay.textContent = turnText;
+        }
+    });
+
+    socket.on('board:cleared', (data) => {
+        stopLocalTimer();
     });
 }
 
@@ -540,37 +708,21 @@ function setupEventListeners() {
     });
     
     // Game controls
-    hostNewQuestionBtn.addEventListener('click', loadNewQuestion);
-    hostRevealNextBtn.addEventListener('click', revealNextAnswer);
+    hostNewQuestionBtn.addEventListener('click', () => loadNewQuestion(false));
     hostAddStrikeBtn.addEventListener('click', () => socket.emit('addStrike'));
     hostRemoveStrikeBtn.addEventListener('click', () => socket.emit('removeStrike'));
-    
-    // Points
-    hostAwardTeam1Btn.addEventListener('click', () => {
-        const points = parseInt(hostPointsInput.value) || 0;
-        if (points > 0) {
-            socket.emit('endRound', { team: 1, points, correctGuesses: correctGuessesThisRound });
-            hostPointsInput.value = 0;
-            roundPointsEarned = 0;
-            correctGuessesThisRound = [];
-            hostRoundPoints.textContent = '(Round: 0)';
-        }
-    });
-    hostAwardTeam2Btn.addEventListener('click', () => {
-        const points = parseInt(hostPointsInput.value) || 0;
-        if (points > 0) {
-            socket.emit('endRound', { team: 2, points, correctGuesses: correctGuessesThisRound });
-            hostPointsInput.value = 0;
-            roundPointsEarned = 0;
-            correctGuessesThisRound = [];
-            hostRoundPoints.textContent = '(Round: 0)';
-        }
-    });
-    
+
     // Flow controls
     hostNextRoundBtn.addEventListener('click', () => {
-        // Emit next round / show summary event
-        socket.emit('showRoundSummary');
+        if (showingSummary) {
+            // On summary screen - continue to next round
+            socket.emit('continueFromSummary');
+            showingSummary = false;
+            updateNextRoundButtonText();
+        } else {
+            // On game screen - show summary first
+            socket.emit('showRoundSummary');
+        }
     });
     hostResetRoundBtn.addEventListener('click', () => {
         if (confirm('Reset this round?')) {
@@ -582,12 +734,31 @@ function setupEventListeners() {
             socket.emit('endGame');
         }
     });
-    
-    // Answer check
-    hostCheckAnswerBtn.addEventListener('click', checkAnswer);
-    hostAnswerInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') checkAnswer();
-    });
+
+    // Party flow control
+    if (hostPartyNextBtn) {
+        hostPartyNextBtn.addEventListener('click', handlePartyNextClick);
+    }
+    if (hostPartyBackBtn) {
+        hostPartyBackBtn.addEventListener('click', handlePartyBackClick);
+    }
+
+    // Panel toggle buttons
+    if (hostHowToPlayBtn) {
+        hostHowToPlayBtn.addEventListener('click', () => {
+            socket.emit('panel:toggle', { panel: 'tutorial' });
+        });
+    }
+    if (hostShowPlayersBtn) {
+        hostShowPlayersBtn.addEventListener('click', () => {
+            socket.emit('panel:toggle', { panel: 'players' });
+        });
+    }
+    if (hostJoinGameBtn) {
+        hostJoinGameBtn.addEventListener('click', () => {
+            socket.emit('panel:toggle', { panel: 'qrCodes' });
+        });
+    }
     
     // Timer
     presetBtns.forEach(btn => {
@@ -598,22 +769,30 @@ function setupEventListeners() {
             updateTimerDisplay();
         });
     });
-    hostTimerStartBtn.addEventListener('click', () => {
-        const seconds = parseInt(hostTimerInput.value) || 30;
-        socket.emit('timer:start', { seconds });
-    });
-    hostTimerPauseBtn.addEventListener('click', () => {
-        socket.emit('timer:pause');
-    });
-    hostTimerResetBtn.addEventListener('click', () => {
-        const seconds = parseInt(hostTimerInput.value) || 30;
-        socket.emit('timer:reset', { seconds });
-    });
-    
+    if (hostTimerStartBtn) {
+        hostTimerStartBtn.addEventListener('click', () => {
+            const seconds = parseInt(hostTimerInput.value) || 30;
+            socket.emit('timer:start', { seconds });
+        });
+    }
+    if (hostTimerPauseBtn) {
+        hostTimerPauseBtn.addEventListener('click', () => {
+            socket.emit('timer:pause');
+        });
+    }
+    if (hostTimerResetBtn) {
+        hostTimerResetBtn.addEventListener('click', () => {
+            const seconds = parseInt(hostTimerInput.value) || 30;
+            socket.emit('timer:reset', { seconds });
+        });
+    }
+
     // Log
-    hostClearLogBtn.addEventListener('click', () => {
-        socket.emit('clearEntryLog');
-    });
+    if (hostClearLogBtn) {
+        hostClearLogBtn.addEventListener('click', () => {
+            socket.emit('clearEntryLog');
+        });
+    }
     
     // Setup
     roundSelectBtns.forEach(btn => {
@@ -621,15 +800,35 @@ function setupEventListeners() {
             roundSelectBtns.forEach(b => b.classList.remove('selected'));
             btn.classList.add('selected');
             hostCustomRounds.value = '';
+            emitTimerConfig();
         });
     });
     hostCustomRounds.addEventListener('input', () => {
         if (hostCustomRounds.value) {
             roundSelectBtns.forEach(b => b.classList.remove('selected'));
         }
+        emitTimerConfig();
     });
     hostStartGameBtn.addEventListener('click', startGame);
-    
+
+    // Timer Config event listeners
+    if (autoTimerToggle) {
+        autoTimerToggle.addEventListener('change', () => {
+            const enabled = autoTimerToggle.checked;
+            if (timerInputsContainer) {
+                timerInputsContainer.classList.toggle('hidden', !enabled);
+            }
+            emitTimerConfig();
+        });
+    }
+
+    // Timer input change listeners
+    [buzzerTimeInput, afterBuzzerTimeInput, regularTimeInput, stealTimeInput].forEach(input => {
+        if (input) {
+            input.addEventListener('change', emitTimerConfig);
+        }
+    });
+
     // Setup Help button - switch to help tab
     hostSetupHelpBtn.addEventListener('click', () => {
         showGameControls(); // Show the game tabs
@@ -663,33 +862,13 @@ function setupEventListeners() {
         }
     });
 
-    // Party mode controls
-    if (hostGiveTurnPlayer1Btn) {
-        hostGiveTurnPlayer1Btn.addEventListener('click', () => {
-            if (currentBattlePlayers[0]) {
-                socket.emit('partyGame:setTurn', { playerId: currentBattlePlayers[0].id });
-            }
-        });
-    }
-    if (hostGiveTurnPlayer2Btn) {
-        hostGiveTurnPlayer2Btn.addEventListener('click', () => {
-            if (currentBattlePlayers[1]) {
-                socket.emit('partyGame:setTurn', { playerId: currentBattlePlayers[1].id });
-            }
-        });
-    }
-    if (hostNextBattleBtn) {
-        hostNextBattleBtn.addEventListener('click', () => {
-            socket.emit('partyGame:nextBattle');
-        });
-    }
 }
 
 // Handle login
 function handleLogin() {
     const code = roomCodeInput.value.trim().toUpperCase();
     const password = hostPasswordInput.value;
-    
+
     if (!code) {
         hostLoginError.textContent = 'Please enter a room code';
         return;
@@ -698,11 +877,27 @@ function handleLogin() {
         hostLoginError.textContent = 'Please enter the host password';
         return;
     }
-    
+
+    // Check if socket is connected before attempting auth
+    if (!socket.connected) {
+        hostLoginError.textContent = 'Not connected to server. Please wait and try again.';
+        return;
+    }
+
     hostLoginError.textContent = '';
     hostLoginBtn.disabled = true;
     updateConnectionStatus('connecting', 'Authenticating...');
-    
+
+    // Clear any existing timeout
+    if (authTimeout) clearTimeout(authTimeout);
+
+    // Set timeout to reset UI if no response
+    authTimeout = setTimeout(() => {
+        hostLoginBtn.disabled = false;
+        hostLoginError.textContent = 'Authentication timed out. Please try again.';
+        updateConnectionStatus('disconnected', 'Connection timeout');
+    }, 10000);
+
     socket.emit('host:authenticate', { roomCode: code, password });
 }
 
@@ -722,12 +917,14 @@ function showDisconnectedOverlay(reason) {
 function applyGameState(state) {
     if (state.team1Name) {
         hostTeam1Name.textContent = state.team1Name;
-        document.getElementById('host-award-team1-name').textContent = state.team1Name;
+        const awardTeam1 = document.getElementById('host-award-team1-name');
+        if (awardTeam1) awardTeam1.textContent = state.team1Name;
         hostTeam1Input.value = state.team1Name;
     }
     if (state.team2Name) {
         hostTeam2Name.textContent = state.team2Name;
-        document.getElementById('host-award-team2-name').textContent = state.team2Name;
+        const awardTeam2 = document.getElementById('host-award-team2-name');
+        if (awardTeam2) awardTeam2.textContent = state.team2Name;
         hostTeam2Input.value = state.team2Name;
     }
     if (state.team1Score !== undefined) {
@@ -757,25 +954,25 @@ function applyGameState(state) {
     }
     if (state.roundPointsEarned !== undefined) {
         roundPointsEarned = state.roundPointsEarned;
-        hostPointsInput.value = roundPointsEarned;
-        hostRoundPoints.textContent = `(Round: ${roundPointsEarned})`;
     }
     if (state.usedQuestionIndices) {
         usedQuestionIndices = state.usedQuestionIndices;
     }
     
     updateAnswerPreview();
-    
-    // Show appropriate controls based on screen
-    if (state.screen === 'setup' || state.screen === 'qr') {
-        showSetupControls();
-    } else if (state.screen === 'game') {
-        showGameControls();
-    }
 }
 
 // Switch tab
+let currentActiveTab = 'game';
+
 function switchTab(tabName) {
+    // If clicking the same tab (except Game), toggle it off and go back to Game
+    if (tabName === currentActiveTab && tabName !== 'game') {
+        tabName = 'game';
+    }
+
+    currentActiveTab = tabName;
+
     navTabs.forEach(tab => {
         tab.classList.toggle('active', tab.dataset.tab === tabName);
     });
@@ -853,8 +1050,6 @@ function loadNewQuestion(incrementRound = false) {
     
     // Update local UI
     hostQuestionText.textContent = question.question;
-    hostPointsInput.value = 0;
-    hostRoundPoints.textContent = '(Round: 0)';
     updateAnswerPreview();
     updateStrikesDisplay(0);
 }
@@ -871,24 +1066,6 @@ function revealNextAnswer() {
     }
 }
 
-// Check answer
-function checkAnswer() {
-    const answer = hostAnswerInput.value.trim();
-    if (!answer) {
-        alert('Please enter an answer');
-        return;
-    }
-    if (!currentQuestion) {
-        alert('No question loaded');
-        return;
-    }
-    
-    hostAnswerResult.style.display = 'none';
-    hostAnswerChecking.style.display = 'flex';
-    hostCheckAnswerBtn.disabled = true;
-    
-    socket.emit('checkAnswer', { playerAnswer: answer });
-}
 
 // Timer functions
 function startLocalTimer() {
@@ -915,6 +1092,7 @@ function stopLocalTimer() {
 }
 
 function updateTimerDisplay() {
+    if (!hostTimerDisplay) return;  // Skip if element doesn't exist
     const minutes = Math.floor(timerSeconds / 60);
     const seconds = timerSeconds % 60;
     hostTimerDisplay.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
@@ -933,6 +1111,9 @@ function updateTimerDisplay() {
 
 // Render entry log
 function renderEntryLog(entries) {
+    // Skip if log element was removed from HTML
+    if (!hostLogList) return;
+
     if (!entries || entries.length === 0) {
         hostLogList.innerHTML = '<div class="log-empty">No entries yet</div>';
         return;
@@ -955,11 +1136,183 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+// Update Next Round button text based on summary state
+function updateNextRoundButtonText() {
+    if (showingSummary) {
+        hostNextRoundBtn.textContent = 'Next Round →';
+    } else {
+        hostNextRoundBtn.textContent = 'End Round';
+    }
+}
+
+// Render host team management panel
+function renderHostManageTeams() {
+    if (!hostManageTeam1List || !hostManageTeam2List || !hostManageUnassignedList) return;
+
+    // Update team titles
+    if (hostManageTeam1Title) {
+        hostManageTeam1Title.textContent = hostTeam1Name?.textContent || 'Team 1';
+    }
+    if (hostManageTeam2Title) {
+        hostManageTeam2Title.textContent = hostTeam2Name?.textContent || 'Team 2';
+    }
+
+    // Get players by team
+    const team1PlayersList = partyPlayers.filter(p => p.team === 1);
+    const team2PlayersList = partyPlayers.filter(p => p.team === 2);
+    const unassignedPlayersList = partyPlayers.filter(p => p.team === null || p.team === undefined);
+
+    // Render Team 1 players
+    if (team1PlayersList.length === 0) {
+        hostManageTeam1List.innerHTML = '<div class="team-manage-empty">No players</div>';
+    } else {
+        hostManageTeam1List.innerHTML = team1PlayersList.map(p => `
+            <div class="team-manage-player">
+                <span class="player-name">${escapeHtml(p.name)}</span>
+                <div class="player-btns">
+                    <button class="move-btn unassign" onclick="moveHostPlayerToTeam('${p.id}', null)">✕</button>
+                    <button class="move-btn to-team2" onclick="moveHostPlayerToTeam('${p.id}', 2)">→</button>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    // Render Team 2 players
+    if (team2PlayersList.length === 0) {
+        hostManageTeam2List.innerHTML = '<div class="team-manage-empty">No players</div>';
+    } else {
+        hostManageTeam2List.innerHTML = team2PlayersList.map(p => `
+            <div class="team-manage-player">
+                <span class="player-name">${escapeHtml(p.name)}</span>
+                <div class="player-btns">
+                    <button class="move-btn to-team1" onclick="moveHostPlayerToTeam('${p.id}', 1)">←</button>
+                    <button class="move-btn unassign" onclick="moveHostPlayerToTeam('${p.id}', null)">✕</button>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    // Render Unassigned players
+    if (unassignedPlayersList.length === 0) {
+        hostManageUnassignedList.innerHTML = '<div class="team-manage-empty">No unassigned</div>';
+    } else {
+        hostManageUnassignedList.innerHTML = unassignedPlayersList.map(p => `
+            <div class="team-manage-player">
+                <span class="player-name">${escapeHtml(p.name)}</span>
+                <div class="player-btns">
+                    <button class="move-btn to-team1" onclick="moveHostPlayerToTeam('${p.id}', 1)">T1</button>
+                    <button class="move-btn to-team2" onclick="moveHostPlayerToTeam('${p.id}', 2)">T2</button>
+                </div>
+            </div>
+        `).join('');
+    }
+}
+
+// Move player to team (from host manage panel)
+function moveHostPlayerToTeam(playerId, team) {
+    if (socket) {
+        socket.emit('player:assignTeam', { playerId, team });
+    }
+}
+
+// Render inline team management (in setup controls)
+function renderInlineTeams() {
+    if (!hostSetupTeam1List || !hostSetupTeam2List || !hostSetupUnassignedList) return;
+
+    // Update team titles
+    if (hostSetupTeam1Title) {
+        hostSetupTeam1Title.textContent = hostTeam1Input?.value?.trim().toUpperCase() || hostTeam1Name?.textContent || 'Team 1';
+    }
+    if (hostSetupTeam2Title) {
+        hostSetupTeam2Title.textContent = hostTeam2Input?.value?.trim().toUpperCase() || hostTeam2Name?.textContent || 'Team 2';
+    }
+
+    // Get players by team
+    const team1PlayersList = partyPlayers.filter(p => p.team === 1);
+    const team2PlayersList = partyPlayers.filter(p => p.team === 2);
+    const unassignedPlayersList = partyPlayers.filter(p => p.team === null || p.team === undefined);
+
+    // Render Team 1 players
+    if (team1PlayersList.length === 0) {
+        hostSetupTeam1List.innerHTML = '<div class="team-manage-empty">No players</div>';
+    } else {
+        hostSetupTeam1List.innerHTML = team1PlayersList.map(p => `
+            <div class="team-manage-player">
+                <span class="player-name">${escapeHtml(p.name)}</span>
+                <div class="player-btns">
+                    <button class="move-btn unassign" onclick="moveHostPlayerToTeam('${p.id}', null)">✕</button>
+                    <button class="move-btn to-team2" onclick="moveHostPlayerToTeam('${p.id}', 2)">→</button>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    // Render Team 2 players
+    if (team2PlayersList.length === 0) {
+        hostSetupTeam2List.innerHTML = '<div class="team-manage-empty">No players</div>';
+    } else {
+        hostSetupTeam2List.innerHTML = team2PlayersList.map(p => `
+            <div class="team-manage-player">
+                <span class="player-name">${escapeHtml(p.name)}</span>
+                <div class="player-btns">
+                    <button class="move-btn to-team1" onclick="moveHostPlayerToTeam('${p.id}', 1)">←</button>
+                    <button class="move-btn unassign" onclick="moveHostPlayerToTeam('${p.id}', null)">✕</button>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    // Render Unassigned players
+    if (unassignedPlayersList.length === 0) {
+        hostSetupUnassignedList.innerHTML = '<div class="team-manage-empty">No unassigned</div>';
+    } else {
+        hostSetupUnassignedList.innerHTML = unassignedPlayersList.map(p => `
+            <div class="team-manage-player">
+                <span class="player-name">${escapeHtml(p.name)}</span>
+                <div class="player-btns">
+                    <button class="move-btn to-team1" onclick="moveHostPlayerToTeam('${p.id}', 1)">T1</button>
+                    <button class="move-btn to-team2" onclick="moveHostPlayerToTeam('${p.id}', 2)">T2</button>
+                </div>
+            </div>
+        `).join('');
+    }
+}
+
+// Reset game display to fresh state (called on game reset)
+function resetGameDisplay() {
+    // Clear question display
+    hostQuestionText.textContent = 'No question loaded';
+    currentQuestion = null;
+
+    // Clear revealed answers
+    revealedAnswers = [];
+    updateAnswerPreview();
+
+    // Reset scores display
+    hostTeam1Score.textContent = '0';
+    hostTeam2Score.textContent = '0';
+
+    // Reset round display
+    hostCurrentRound.textContent = '1';
+
+    // Reset strikes
+    updateStrikesDisplay(0);
+
+    // Reset round points
+    roundPointsEarned = 0;
+
+    // Clear entry log
+    renderEntryLog([]);
+}
+
 // Show setup controls
 function showSetupControls() {
     hostSetupControls.style.display = 'block';
     document.getElementById('tab-game').style.display = 'none';
     navTabs.forEach(tab => tab.style.display = 'none');
+
+    // Party mode is always available - always show party flow control
+    updatePartyFlowControl();
 }
 
 // Show game controls
@@ -989,6 +1342,119 @@ function startGame() {
     usedQuestionIndices = [];
     
     socket.emit('startGame', { team1Name, team2Name, totalRounds });
+}
+
+// ============ PARTY FLOW CONTROL ============
+
+// Handle party next button click
+function handlePartyNextClick() {
+    if (partyScreen === 'qr') {
+        // Go to player join screen (lobby)
+        socket.emit('partyScreen:navigate', { screen: 'lobby' });
+    } else if (partyScreen === 'lobby') {
+        // Go to team assignment screen
+        socket.emit('partyScreen:navigate', { screen: 'teams' });
+    } else if (partyScreen === 'teams') {
+        // Go to config screen - also emit timer config
+        emitTimerConfig();
+        socket.emit('partyScreen:navigate', { screen: 'config' });
+    } else if (partyScreen === 'config') {
+        // Start the party game - include settings from host inputs
+        const team1Name = hostTeam1Input.value.trim().toUpperCase() || 'TEAM 1';
+        const team2Name = hostTeam2Input.value.trim().toUpperCase() || 'TEAM 2';
+
+        // Get selected rounds
+        let totalRounds = 7;
+        const customRounds = parseInt(hostCustomRounds.value);
+        if (customRounds && customRounds > 0) {
+            totalRounds = Math.min(customRounds, 50);
+        } else {
+            const selectedBtn = document.querySelector('.round-select-btn.selected');
+            if (selectedBtn) {
+                totalRounds = parseInt(selectedBtn.dataset.rounds);
+            }
+        }
+
+        socket.emit('partyScreen:navigate', { screen: 'game', team1Name, team2Name, totalRounds });
+    }
+}
+
+// Handle party back button click
+function handlePartyBackClick() {
+    if (partyScreen === 'config') {
+        socket.emit('partyScreen:navigate', { screen: 'teams' });
+    } else if (partyScreen === 'teams') {
+        socket.emit('partyScreen:navigate', { screen: 'lobby' });
+    } else if (partyScreen === 'lobby') {
+        socket.emit('partyScreen:navigate', { screen: 'qr' });
+    }
+    // No back from 'qr' - it's the first screen
+}
+
+// Update party flow control button
+function updatePartyFlowControl() {
+    const startGameBtn = document.getElementById('host-start-game-btn');
+
+    if (!partyFlowControl || !hostPartyNextBtn || !hostPartyNextText) return;
+
+    if (partyScreen === 'game') {
+        // Hide both during game
+        partyFlowControl.style.display = 'none';
+        if (startGameBtn) startGameBtn.style.display = 'none';
+        return;
+    }
+
+    // In party mode setup: show party flow, hide regular start game
+    partyFlowControl.style.display = 'block';
+    if (startGameBtn) startGameBtn.style.display = 'none';
+
+    // Update button text based on current screen
+    if (partyScreen === 'qr') {
+        hostPartyNextText.textContent = 'Players Join →';
+        hostPartyNextBtn.classList.remove('start-game');
+    } else if (partyScreen === 'lobby') {
+        hostPartyNextText.textContent = 'Assign Teams →';
+        hostPartyNextBtn.classList.remove('start-game');
+    } else if (partyScreen === 'teams') {
+        hostPartyNextText.textContent = 'Configure →';
+        hostPartyNextBtn.classList.remove('start-game');
+    } else if (partyScreen === 'config') {
+        hostPartyNextText.textContent = 'Start Game';
+        hostPartyNextBtn.classList.add('start-game');
+    }
+
+    // Show/hide back button (hidden on first screen)
+    if (hostPartyBackBtn) {
+        hostPartyBackBtn.style.display = (partyScreen === 'qr') ? 'none' : 'flex';
+    }
+}
+
+// Emit timer config to server
+function emitTimerConfig() {
+    if (!socket) return;
+
+    // Get current rounds value
+    let currentRounds = 7;
+    const customRounds = parseInt(hostCustomRounds.value);
+    if (customRounds && customRounds > 0) {
+        currentRounds = Math.min(customRounds, 50);
+    } else {
+        const selectedBtn = document.querySelector('.round-select-btn.selected');
+        if (selectedBtn) {
+            currentRounds = parseInt(selectedBtn.dataset.rounds);
+        }
+    }
+
+    const config = {
+        enabled: autoTimerToggle ? autoTimerToggle.checked : true,
+        buzzerTime: buzzerTimeInput ? parseInt(buzzerTimeInput.value) || 7 : 7,
+        afterBuzzerTime: afterBuzzerTimeInput ? parseInt(afterBuzzerTimeInput.value) || 15 : 15,
+        regularTime: regularTimeInput ? parseInt(regularTimeInput.value) || 35 : 35,
+        stealTime: stealTimeInput ? parseInt(stealTimeInput.value) || 120 : 120,
+        totalRounds: currentRounds
+    };
+
+    socket.emit('timerConfig:update', config);
 }
 
 // Initialize on page load

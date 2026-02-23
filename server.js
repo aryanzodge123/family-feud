@@ -37,6 +37,9 @@ const HOST_PASSWORD = '654-SteveHarveyIsCool!-321';
 // Game rooms storage
 const gameRooms = new Map();
 
+// Room answer processing queue (prevents concurrent OpenAI calls per room)
+const roomAnswerProcessing = new Map(); // roomCode -> boolean
+
 // Generate a random room code
 function generateRoomCode() {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -82,13 +85,36 @@ function createGameRoom() {
             lastPointsAwarded: 0,
             // Party mode state
             partyMode: false,
+            partyScreen: 'qr',              // qr, lobby, teams, game
             players: [],                    // { id, name, socketId, team }
             team1Players: [],               // playerIds assigned to team 1
             team2Players: [],               // playerIds assigned to team 2
             currentBattlePlayers: [null, null], // [team1PlayerId, team2PlayerId]
             currentTurnPlayer: null,        // playerId whose turn it is
             playerTurnIndex: { team1: 0, team2: 0 },
-            faceOffActive: false            // true during face-off phase
+            faceOffActive: false,           // true during face-off phase
+            buzzerPhase: false,             // true while waiting for buzzer
+            buzzerWinner: null,             // playerId who buzzed first
+            buzzerLoser: null,              // playerId who was slower
+            // Face-off chain state
+            faceOffAttempts: [],            // Array of playerIds who have tried
+            faceOffPhase: 'buzzer',         // 'buzzer' | 'chain' | 'resolved'
+            controllingTeam: null,          // Team that won face-off and is playing (1 or 2)
+            // Steal phase state
+            stealPhase: false,              // Is steal phase active?
+            stealingTeam: null,             // Team attempting steal (1 or 2)
+            stealPlayerId: null,            // Player attempting steal
+            roundWinningTeam: null,         // Which team gets points (set by game outcome)
+            pendingTurnChange: null,        // Holds turn:changed data until display animation completes
+            pendingStealPhase: null,        // Holds steal:phase data until display animation completes
+            // Timer config
+            timerConfig: {
+                enabled: true,
+                buzzerTime: 7,
+                afterBuzzerTime: 15,
+                regularTime: 35,
+                stealTime: 120
+            }
         }
     };
     
@@ -99,6 +125,156 @@ function createGameRoom() {
 // Get room by code
 function getRoom(roomCode) {
     return gameRooms.get(roomCode);
+}
+
+// Start state heartbeat for a room (syncs critical state)
+function startHeartbeat(roomCode) {
+    const room = getRoom(roomCode);
+    if (!room) return;
+
+    // Clear any existing heartbeat
+    if (room.heartbeatInterval) {
+        clearInterval(room.heartbeatInterval);
+    }
+
+    // Use faster heartbeat (5s) for large groups (>8 players), otherwise 10s
+    const playerCount = room.gameState.players ? room.gameState.players.length : 0;
+    const heartbeatInterval = playerCount > 8 ? 5000 : 10000;
+
+    room.heartbeatInterval = setInterval(() => {
+        // Only emit if room still has connected clients
+        if (room.displaySocketId || room.hostSocketId) {
+            io.to(roomCode).emit('state:heartbeat', {
+                team1Score: room.gameState.team1Score,
+                team2Score: room.gameState.team2Score,
+                strikes: room.gameState.strikes,
+                currentRound: room.gameState.currentRound,
+                currentTurnPlayer: room.gameState.currentTurnPlayer,
+                faceOffActive: room.gameState.faceOffActive,
+                faceOffPhase: room.gameState.faceOffPhase,
+                stealPhase: room.gameState.stealPhase,
+                // Include player connection status for sync
+                players: room.gameState.players ? room.gameState.players.map(p => ({
+                    id: p.id,
+                    name: p.name,
+                    team: p.team,
+                    disconnected: p.disconnected || false
+                })) : []
+            });
+        }
+    }, heartbeatInterval);
+}
+
+// Stop heartbeat for a room
+function stopHeartbeat(roomCode) {
+    const room = getRoom(roomCode);
+    if (room && room.heartbeatInterval) {
+        clearInterval(room.heartbeatInterval);
+        room.heartbeatInterval = null;
+    }
+}
+
+// Get current turn player safely (returns null if player doesn't exist or is disconnected)
+function getCurrentTurnPlayer(room) {
+    if (!room || !room.gameState || !room.gameState.currentTurnPlayer) {
+        return null;
+    }
+    const player = room.gameState.players.find(p => p.id === room.gameState.currentTurnPlayer);
+    if (!player || player.disconnected) {
+        return null;
+    }
+    return player;
+}
+
+// Get next connected player on a team (skips disconnected players)
+function getNextConnectedPlayerOnTeam(room, teamNumber, currentPlayerId) {
+    if (!room || !room.gameState) return null;
+
+    const teamPlayers = teamNumber === 1 ? room.gameState.team1Players : room.gameState.team2Players;
+    if (!teamPlayers || teamPlayers.length === 0) return null;
+
+    const currentIdx = teamPlayers.indexOf(currentPlayerId);
+    let nextIdx = currentIdx === -1 ? 0 : currentIdx;
+    let attempts = 0;
+
+    while (attempts < teamPlayers.length) {
+        nextIdx = (nextIdx + 1) % teamPlayers.length;
+        const candidateId = teamPlayers[nextIdx];
+        const candidate = room.gameState.players.find(p => p.id === candidateId);
+        if (candidate && !candidate.disconnected) {
+            return candidate;
+        }
+        attempts++;
+    }
+
+    return null; // All players on team are disconnected
+}
+
+// Get next player in the face-off chain
+function getNextChainPlayer(room) {
+    const { buzzerWinner, buzzerLoser, faceOffAttempts, players, team1Players, team2Players } = room.gameState;
+
+    // Get team info for buzzer players
+    const winnerPlayer = players.find(p => p.id === buzzerWinner);
+    const loserPlayer = players.find(p => p.id === buzzerLoser);
+    const winnerTeam = winnerPlayer?.team;
+    const loserTeam = loserPlayer?.team;
+
+    const attempted = new Set(faceOffAttempts);
+
+    // 1. If buzzer loser hasn't tried yet and is connected, they go next
+    if (buzzerLoser && !attempted.has(buzzerLoser)) {
+        const loser = players.find(p => p.id === buzzerLoser);
+        if (loser && !loser.disconnected) {
+            return loser;
+        }
+    }
+
+    // 2. Alternate between teams, getting next player who hasn't tried
+    const winnerTeamPlayers = winnerTeam === 1 ? team1Players : team2Players;
+    const loserTeamPlayers = loserTeam === 1 ? team1Players : team2Players;
+
+    // Count attempts per team
+    const winnerTeamAttempts = faceOffAttempts.filter(id => {
+        const p = players.find(pl => pl.id === id);
+        return p?.team === winnerTeam;
+    }).length;
+    const loserTeamAttempts = faceOffAttempts.filter(id => {
+        const p = players.find(pl => pl.id === id);
+        return p?.team === loserTeam;
+    }).length;
+
+    // Winner's team goes first in the chain (after buzzer phase)
+    let nextTeamPlayers, otherTeamPlayers;
+    if (winnerTeamAttempts <= loserTeamAttempts) {
+        nextTeamPlayers = winnerTeamPlayers;
+        otherTeamPlayers = loserTeamPlayers;
+    } else {
+        nextTeamPlayers = loserTeamPlayers;
+        otherTeamPlayers = winnerTeamPlayers;
+    }
+
+    // Find next unattempted connected player on the prioritized team
+    for (const playerId of nextTeamPlayers) {
+        if (!attempted.has(playerId)) {
+            const player = players.find(p => p.id === playerId);
+            if (player && !player.disconnected) {
+                return player;
+            }
+        }
+    }
+
+    // Try other team
+    for (const playerId of otherTeamPlayers) {
+        if (!attempted.has(playerId)) {
+            const player = players.find(p => p.id === playerId);
+            if (player && !player.disconnected) {
+                return player;
+            }
+        }
+    }
+
+    return null; // Everyone has tried or is disconnected
 }
 
 // Serve static files
@@ -130,9 +306,13 @@ function serveStaticFile(filePath, res) {
     });
 }
 
-// Make OpenAI API call
+// Make OpenAI API call with timeout
 function callOpenAI(question, answers, playerAnswer) {
     return new Promise((resolve, reject) => {
+        const TIMEOUT_MS = 8000; // 8 second timeout
+        let timeoutId = null;
+        let requestCompleted = false;
+
         const prompt = `You are judging a Family Feud game. Given the question and the list of correct answers on the board, determine if the player's answer matches or is close enough to any of the correct answers.
 
 Question: "${question}"
@@ -180,6 +360,16 @@ Be lenient - if the player's answer is essentially the same meaning or a close v
             }
         };
 
+        // Set up timeout
+        timeoutId = setTimeout(() => {
+            if (!requestCompleted) {
+                requestCompleted = true;
+                req.destroy();
+                console.error('OpenAI API timeout after', TIMEOUT_MS, 'ms');
+                reject(new Error('OpenAI API timeout - please try again'));
+            }
+        }, TIMEOUT_MS);
+
         const req = https.request(options, (res) => {
             let data = '';
 
@@ -188,6 +378,10 @@ Be lenient - if the player's answer is essentially the same meaning or a close v
             });
 
             res.on('end', () => {
+                if (requestCompleted) return; // Already timed out
+                requestCompleted = true;
+                clearTimeout(timeoutId);
+
                 try {
                     const response = JSON.parse(data);
                     if (res.statusCode !== 200) {
@@ -202,6 +396,9 @@ Be lenient - if the player's answer is essentially the same meaning or a close v
         });
 
         req.on('error', (error) => {
+            if (requestCompleted) return; // Already timed out
+            requestCompleted = true;
+            clearTimeout(timeoutId);
             reject(error);
         });
 
@@ -383,13 +580,15 @@ io.on('connection', (socket) => {
             const existingHostSocket = io.sockets.sockets.get(room.hostSocketId);
             if (existingHostSocket) {
                 // Notify the new host that there's an existing host
-                socket.emit('host:authResult', { 
-                    success: false, 
+                socket.emit('host:authResult', {
+                    success: false,
                     error: 'Another host is already connected',
-                    canTakeOver: true 
+                    canTakeOver: true
                 });
                 return;
             }
+            // Stale socket reference - clear it and proceed
+            room.hostSocketId = null;
         }
         
         room.hostSocketId = socket.id;
@@ -462,17 +661,27 @@ io.on('connection', (socket) => {
         room.gameState.team2Score = 0;
         room.gameState.screen = 'game';
         room.gameState.usedQuestionIndices = [];
-        
+
+        // Start heartbeat for state sync
+        startHeartbeat(socket.roomCode);
+
         io.to(socket.roomCode).emit('game:started', room.gameState);
     });
-    
+
+    // Countdown finished - relay to all clients
+    socket.on('countdown:finished', () => {
+        if (!socket.roomCode) return;
+
+        io.to(socket.roomCode).emit('countdown:completed');
+    });
+
     // Load new question
     socket.on('newQuestion', ({ question, incrementRound = false }) => {
         if (!socket.isHost || !socket.roomCode) return;
-        
+
         const room = getRoom(socket.roomCode);
         if (!room) return;
-        
+
         room.gameState.currentQuestion = question;
         room.gameState.revealedAnswers = [];
         room.gameState.strikes = 0;
@@ -481,6 +690,11 @@ io.on('connection', (socket) => {
         room.gameState.correctGuessesThisRound = [];
         room.gameState.lastWinningTeam = 0;
         room.gameState.lastPointsAwarded = 0;
+        // Reset steal state
+        room.gameState.stealPhase = false;
+        room.gameState.stealingTeam = null;
+        room.gameState.stealPlayerId = null;
+        room.gameState.roundWinningTeam = null;
         
         // Only increment round when explicitly requested (from Next Round flow)
         if (incrementRound && room.gameState.currentRound < room.gameState.totalRounds) {
@@ -602,25 +816,38 @@ io.on('connection', (socket) => {
     // Show round summary (triggered by Next Round button)
     socket.on('showRoundSummary', () => {
         if (!socket.isHost || !socket.roomCode) return;
-        
+
         const room = getRoom(socket.roomCode);
         if (!room) return;
-        
+
         // Get correct guesses from server-tracked state
         const guesses = room.gameState.correctGuessesThisRound || [];
-        
+
         // Calculate round points (sum of revealed answer points)
         let roundPoints = 0;
         if (room.gameState.currentQuestion) {
             room.gameState.currentQuestion.answers.forEach((answer, index) => {
-                if (room.gameState.revealedAnswers && room.gameState.revealedAnswers[index]) {
+                if (room.gameState.revealedAnswers && room.gameState.revealedAnswers.includes(index)) {
                     roundPoints += answer.points;
                 }
             });
         }
-        
-        // Determine winning team based on last points action or default
-        const winningTeam = room.gameState.lastWinningTeam || 1;
+
+        // Set roundWinningTeam if not already set (board completed before 3 strikes)
+        if (!room.gameState.roundWinningTeam) {
+            room.gameState.roundWinningTeam = room.gameState.controllingTeam || 1;
+        }
+
+        // Auto-award points to winning team
+        const winningTeam = room.gameState.roundWinningTeam;
+        if (winningTeam === 1) {
+            room.gameState.team1Score += roundPoints;
+        } else {
+            room.gameState.team2Score += roundPoints;
+        }
+
+        room.gameState.lastWinningTeam = winningTeam;
+        room.gameState.lastPointsAwarded = roundPoints;
         
         // Emit round summary to display
         io.to(socket.roomCode).emit('round:summary', {
@@ -752,7 +979,7 @@ io.on('connection', (socket) => {
     
     // Timer controls
     socket.on('timer:start', ({ seconds }) => {
-        if (!socket.isHost || !socket.roomCode) return;
+        if ((!socket.isHost && !socket.isDisplay) || !socket.roomCode) return;
         
         const room = getRoom(socket.roomCode);
         if (!room) return;
@@ -766,7 +993,7 @@ io.on('connection', (socket) => {
     });
     
     socket.on('timer:pause', () => {
-        if (!socket.isHost || !socket.roomCode) return;
+        if ((!socket.isHost && !socket.isDisplay) || !socket.roomCode) return;
         
         const room = getRoom(socket.roomCode);
         if (!room) return;
@@ -777,7 +1004,7 @@ io.on('connection', (socket) => {
     });
     
     socket.on('timer:reset', ({ seconds }) => {
-        if (!socket.isHost || !socket.roomCode) return;
+        if ((!socket.isHost && !socket.isDisplay) || !socket.roomCode) return;
         
         const room = getRoom(socket.roomCode);
         if (!room) return;
@@ -792,22 +1019,55 @@ io.on('connection', (socket) => {
     });
     
     socket.on('timer:update', ({ seconds }) => {
-        if (!socket.isHost || !socket.roomCode) return;
-        
+        if ((!socket.isHost && !socket.isDisplay) || !socket.roomCode) return;
+
         const room = getRoom(socket.roomCode);
         if (!room) return;
-        
+
         room.gameState.timerCurrentSeconds = seconds;
-        
+
         io.to(socket.roomCode).emit('timer:tick', { seconds });
     });
-    
+
+    socket.on('timer:stop', () => {
+        if ((!socket.isHost && !socket.isDisplay) || !socket.roomCode) return;
+
+        io.to(socket.roomCode).emit('timer:stopped');
+    });
+
     socket.on('timer:finished', () => {
-        if (!socket.isHost || !socket.roomCode) return;
-        
+        if ((!socket.isHost && !socket.isDisplay) || !socket.roomCode) return;
+
         io.to(socket.roomCode).emit('timer:timesUp');
     });
-    
+
+    // Display signals that animations are complete - now emit pending updates
+    socket.on('display:animationComplete', () => {
+        if (!socket.isDisplay || !socket.roomCode) return;
+
+        const room = getRoom(socket.roomCode);
+        if (!room) return;
+
+        // Emit pending entry log update (deferred until animation completes)
+        if (room.gameState.pendingEntryLog) {
+            io.to(socket.roomCode).emit('entryLog:updated', {
+                entryLog: room.gameState.pendingEntryLog
+            });
+            room.gameState.pendingEntryLog = null;
+        }
+
+        if (room.gameState.pendingTurnChange) {
+            io.to(socket.roomCode).emit('turn:changed', room.gameState.pendingTurnChange);
+            room.gameState.pendingTurnChange = null;
+        }
+
+        // Emit pending steal phase (deferred until X animation completes)
+        if (room.gameState.pendingStealPhase) {
+            io.to(socket.roomCode).emit('steal:phase', room.gameState.pendingStealPhase);
+            room.gameState.pendingStealPhase = null;
+        }
+    });
+
     // Reset round
     socket.on('resetRound', () => {
         if (!socket.isHost || !socket.roomCode) return;
@@ -826,10 +1086,19 @@ io.on('connection', (socket) => {
     // Reset game
     socket.on('resetGame', () => {
         if (!socket.isHost || !socket.roomCode) return;
-        
+
         const room = getRoom(socket.roomCode);
         if (!room) return;
-        
+
+        // Stop heartbeat
+        stopHeartbeat(socket.roomCode);
+
+        // Preserve party mode state (players, teams) for playing again
+        const preservedPlayers = room.gameState.players || [];
+        const preservedTeam1Players = room.gameState.team1Players || [];
+        const preservedTeam2Players = room.gameState.team2Players || [];
+        const hasPartyPlayers = preservedPlayers.length > 0;
+
         room.gameState = {
             screen: 'setup',
             team1Name: 'TEAM 1',
@@ -846,21 +1115,62 @@ io.on('connection', (socket) => {
             timerCurrentSeconds: 0,
             entryLog: [],
             roundPointsEarned: 0,
-            usedQuestionIndices: []
+            usedQuestionIndices: [],
+            correctGuessesThisRound: [],
+            lastWinningTeam: 0,
+            lastPointsAwarded: 0,
+            // Preserve party mode state
+            partyMode: hasPartyPlayers,
+            partyScreen: 'qr',
+            players: preservedPlayers,
+            team1Players: preservedTeam1Players,
+            team2Players: preservedTeam2Players,
+            currentBattlePlayers: [null, null],
+            currentTurnPlayer: null,
+            playerTurnIndex: { team1: 0, team2: 0 },
+            faceOffActive: false,
+            buzzerPhase: false,
+            buzzerWinner: null,
+            buzzerLoser: null,
+            faceOffAttempts: [],
+            faceOffPhase: 'buzzer',
+            controllingTeam: null,
+            stealPhase: false,
+            stealingTeam: null,
+            stealPlayerId: null,
+            roundWinningTeam: null,
+            pendingTurnChange: null,
+            pendingStealPhase: null,
+            // Reset timer config to defaults
+            timerConfig: {
+                enabled: true,
+                buzzerTime: 7,
+                afterBuzzerTime: 15,
+                regularTime: 35,
+                stealTime: 120
+            }
         };
-        
+
         io.to(socket.roomCode).emit('game:reset', room.gameState);
+
+        // Emit partyScreen update so display shows QR screen
+        if (hasPartyPlayers) {
+            io.to(socket.roomCode).emit('partyScreen:updated', { screen: 'qr' });
+        }
     });
     
     // End game
     socket.on('endGame', () => {
         if (!socket.isHost || !socket.roomCode) return;
-        
+
         const room = getRoom(socket.roomCode);
         if (!room) return;
-        
+
+        // Stop heartbeat
+        stopHeartbeat(socket.roomCode);
+
         room.gameState.screen = 'end';
-        
+
         io.to(socket.roomCode).emit('game:ended', {
             team1Name: room.gameState.team1Name,
             team2Name: room.gameState.team2Name,
@@ -889,6 +1199,13 @@ io.on('connection', (socket) => {
         if (!room) return;
 
         socket.emit('gameState:full', room.gameState);
+    });
+
+    // Panel toggle (host controls display panels)
+    socket.on('panel:toggle', ({ panel }) => {
+        if (!socket.isHost || !socket.roomCode) return;
+        // Relay to all clients in the room (game display will handle it)
+        io.to(socket.roomCode).emit('panel:toggle', { panel });
     });
 
     // ============ PARTY MODE EVENTS ============
@@ -932,9 +1249,91 @@ io.on('connection', (socket) => {
         });
     });
 
-    // Host assigns player to team
+    // Player attempts to reconnect with saved ID
+    socket.on('player:reconnect', ({ roomCode, playerId, playerName }) => {
+        const room = getRoom(roomCode);
+        if (!room) {
+            socket.emit('player:error', { message: 'Room not found' });
+            return;
+        }
+
+        // Find the disconnected player by ID
+        const player = room.gameState.players.find(p => p.id === playerId);
+
+        if (player) {
+            // Restore the player's connection
+            player.socketId = socket.id;
+            player.disconnected = false;
+
+            socket.join(roomCode);
+            socket.roomCode = roomCode;
+            socket.isPlayer = true;
+            socket.playerId = playerId;
+
+            console.log(`Player ${player.name} (${playerId}) reconnected to room ${roomCode}`);
+
+            // Send reconnection confirmation with full game state
+            socket.emit('player:reconnected', {
+                playerId: player.id,
+                playerName: player.name,
+                team: player.team,
+                gameState: room.gameState
+            });
+
+            // Notify everyone about player reconnection
+            io.to(roomCode).emit('players:updated', {
+                players: room.gameState.players
+            });
+            io.to(roomCode).emit('player:reconnected:broadcast', {
+                playerId: player.id,
+                playerName: player.name
+            });
+        } else {
+            // Player ID not found - fall back to new join with same name
+            // Check if someone with this name exists but has a different ID
+            const existingByName = room.gameState.players.find(
+                p => p.name.toLowerCase() === playerName.toLowerCase() && p.disconnected
+            );
+
+            if (existingByName) {
+                // Reconnect to existing player slot by name
+                existingByName.socketId = socket.id;
+                existingByName.disconnected = false;
+
+                socket.join(roomCode);
+                socket.roomCode = roomCode;
+                socket.isPlayer = true;
+                socket.playerId = existingByName.id;
+
+                console.log(`Player ${existingByName.name} reconnected by name to room ${roomCode}`);
+
+                socket.emit('player:reconnected', {
+                    playerId: existingByName.id,
+                    playerName: existingByName.name,
+                    team: existingByName.team,
+                    gameState: room.gameState
+                });
+
+                io.to(roomCode).emit('players:updated', {
+                    players: room.gameState.players
+                });
+                io.to(roomCode).emit('player:reconnected:broadcast', {
+                    playerId: existingByName.id,
+                    playerName: existingByName.name
+                });
+            } else {
+                // No matching player found - tell client to do fresh join
+                socket.emit('player:reconnectFailed', {
+                    message: 'Player session not found. Please join as a new player.',
+                    shouldRejoin: true
+                });
+            }
+        }
+    });
+
+    // Host or display assigns player to team (party mode)
     socket.on('player:assignTeam', ({ playerId, team }) => {
-        if (!socket.isHost || !socket.roomCode) return;
+        if ((!socket.isHost && !socket.isDisplay) || !socket.roomCode) return;
 
         const room = getRoom(socket.roomCode);
         if (!room) return;
@@ -966,9 +1365,208 @@ io.on('connection', (socket) => {
         });
     });
 
-    // Host starts party mode game
-    socket.on('partyGame:start', ({ team1Name, team2Name, totalRounds }) => {
+    // Host or display navigates party mode screens
+    socket.on('partyScreen:navigate', ({ screen, team1Name, team2Name, totalRounds }) => {
+        if ((!socket.isHost && !socket.isDisplay) || !socket.roomCode) return;
+
+        const room = getRoom(socket.roomCode);
+        if (!room) return;
+
+        room.gameState.partyScreen = screen;
+
+        // If navigating to game with settings, start the party game directly
+        if (screen === 'game' && team1Name !== undefined) {
+            room.gameState.partyMode = true;
+            room.gameState.team1Name = team1Name || 'TEAM 1';
+            room.gameState.team2Name = team2Name || 'TEAM 2';
+            room.gameState.totalRounds = totalRounds || 7;
+            room.gameState.currentRound = 1;
+            room.gameState.team1Score = 0;
+            room.gameState.team2Score = 0;
+            room.gameState.screen = 'game';
+            room.gameState.usedQuestionIndices = [];
+            room.gameState.playerTurnIndex = { team1: 0, team2: 0 };
+
+            // Start heartbeat for state sync
+            startHeartbeat(socket.roomCode);
+
+            io.to(socket.roomCode).emit('partyGame:started', room.gameState);
+        } else {
+            // Broadcast screen change to all clients
+            io.to(socket.roomCode).emit('partyScreen:updated', { screen });
+        }
+    });
+
+    // Timer config update from host
+    socket.on('timerConfig:update', (config) => {
         if (!socket.isHost || !socket.roomCode) return;
+
+        const room = getRoom(socket.roomCode);
+        if (!room) return;
+
+        // Update room's timer config
+        room.gameState.timerConfig = {
+            enabled: config.enabled !== undefined ? config.enabled : true,
+            buzzerTime: config.buzzerTime || 7,
+            afterBuzzerTime: config.afterBuzzerTime || 15,
+            regularTime: config.regularTime || 35,
+            stealTime: config.stealTime || 120
+        };
+
+        // Also update totalRounds if provided
+        if (config.totalRounds !== undefined) {
+            room.gameState.totalRounds = config.totalRounds;
+        }
+
+        // Broadcast to all clients (include totalRounds)
+        io.to(socket.roomCode).emit('timerConfig:updated', {
+            ...room.gameState.timerConfig,
+            totalRounds: room.gameState.totalRounds
+        });
+    });
+
+    // Auto-timer expired - treat as wrong answer
+    socket.on('autoTimer:expired', () => {
+        if (!socket.roomCode) return;
+
+        const room = getRoom(socket.roomCode);
+        if (!room || !room.gameState.partyMode) return;
+
+        // Only the display should emit timer expiry
+        if (!socket.isDisplay) return;
+
+        const { faceOffPhase, currentTurnPlayer, stealPhase, players, controllingTeam } = room.gameState;
+
+        // During steal phase - steal fails
+        if (stealPhase) {
+            room.gameState.roundWinningTeam = controllingTeam;
+            room.gameState.stealPhase = false;
+
+            io.to(socket.roomCode).emit('steal:failed', {
+                controllingTeam: controllingTeam,
+                stealPlayerName: 'Time expired',
+                roundPoints: room.gameState.roundPointsEarned
+            });
+            return;
+        }
+
+        // During face-off chain - pass to next player
+        if (faceOffPhase !== 'resolved') {
+            if (currentTurnPlayer && !room.gameState.faceOffAttempts.includes(currentTurnPlayer)) {
+                room.gameState.faceOffAttempts.push(currentTurnPlayer);
+            }
+            room.gameState.faceOffPhase = 'chain';
+
+            // Emit X popup
+            const player = players.find(p => p.id === currentTurnPlayer);
+            io.to(socket.roomCode).emit('answer:incorrect', {
+                strikes: room.gameState.strikes,
+                playerName: player ? player.name : 'Unknown',
+                playerAnswer: '(Time expired)'
+            });
+
+            // Get next player in chain
+            let nextPlayer = getNextChainPlayer(room);
+
+            if (!nextPlayer) {
+                room.gameState.faceOffAttempts = [];
+                const buzzerWinnerPlayer = players.find(p => p.id === room.gameState.buzzerWinner);
+                nextPlayer = buzzerWinnerPlayer || getNextChainPlayer(room);
+            }
+
+            if (nextPlayer) {
+                room.gameState.currentTurnPlayer = nextPlayer.id;
+                if (!room.gameState.currentBattlePlayers.includes(nextPlayer.id)) {
+                    room.gameState.currentBattlePlayers.push(nextPlayer.id);
+                }
+                io.to(socket.roomCode).emit('faceOff:chainNext', {
+                    nextPlayerId: nextPlayer.id,
+                    nextPlayerName: nextPlayer.name,
+                    team: nextPlayer.team
+                });
+            }
+            return;
+        }
+
+        // During regular play - add strike and pass turn
+        if (room.gameState.strikes < 3) {
+            room.gameState.strikes++;
+        }
+
+        const player = players.find(p => p.id === currentTurnPlayer);
+        io.to(socket.roomCode).emit('answer:incorrect', {
+            strikes: room.gameState.strikes,
+            playerName: player ? player.name : 'Unknown',
+            playerAnswer: '(Time expired)'
+        });
+
+        // Check for 3 strikes - trigger steal phase
+        if (room.gameState.strikes === 3) {
+            const opposingTeam = controllingTeam === 1 ? 2 : 1;
+            const opposingPlayers = opposingTeam === 1
+                ? room.gameState.team1Players
+                : room.gameState.team2Players;
+
+            if (opposingPlayers.length > 0) {
+                const stealPlayerId = opposingPlayers[0];
+                const stealPlayer = players.find(p => p.id === stealPlayerId);
+
+                room.gameState.stealPhase = true;
+                room.gameState.stealingTeam = opposingTeam;
+                room.gameState.stealPlayerId = stealPlayerId;
+                room.gameState.currentTurnPlayer = stealPlayerId;
+
+                // Defer steal phase until X animation completes
+                room.gameState.pendingStealPhase = {
+                    stealingTeam: opposingTeam,
+                    stealingTeamName: opposingTeam === 1 ? room.gameState.team1Name : room.gameState.team2Name,
+                    stealPlayerId: stealPlayerId,
+                    stealPlayerName: stealPlayer ? stealPlayer.name : 'Unknown',
+                    roundPoints: room.gameState.roundPointsEarned
+                };
+
+                // Safety: emit steal phase after 8 seconds if display doesn't respond
+                setTimeout(() => {
+                    if (room.gameState.pendingStealPhase) {
+                        io.to(socket.roomCode).emit('steal:phase', room.gameState.pendingStealPhase);
+                        room.gameState.pendingStealPhase = null;
+                    }
+                }, 8000);
+                return;
+            } else {
+                room.gameState.roundWinningTeam = controllingTeam;
+            }
+        }
+
+        // Advance to next player on controlling team
+        const teamPlayers = controllingTeam === 1
+            ? room.gameState.team1Players
+            : room.gameState.team2Players;
+
+        if (teamPlayers.length === 0) {
+            console.error('No players on controlling team');
+            return;
+        }
+
+        const currentIdx = teamPlayers.indexOf(currentTurnPlayer);
+        const safeIdx = currentIdx === -1 ? teamPlayers.length - 1 : currentIdx;
+        const nextIdx = (safeIdx + 1) % teamPlayers.length;
+        const nextPlayerId = teamPlayers[nextIdx];
+        const nextPlayer = players.find(p => p.id === nextPlayerId);
+
+        room.gameState.currentTurnPlayer = nextPlayerId;
+
+        io.to(socket.roomCode).emit('turn:changed', {
+            currentTurnPlayer: nextPlayerId,
+            currentTurnPlayerName: nextPlayer ? nextPlayer.name : 'Unknown',
+            faceOffActive: false,
+            faceOffPhase: room.gameState.faceOffPhase
+        });
+    });
+
+    // Host or display starts party mode game
+    socket.on('partyGame:start', ({ team1Name, team2Name, totalRounds }) => {
+        if ((!socket.isHost && !socket.isDisplay) || !socket.roomCode) return;
 
         const room = getRoom(socket.roomCode);
         if (!room) return;
@@ -984,6 +1582,9 @@ io.on('connection', (socket) => {
         room.gameState.usedQuestionIndices = [];
         room.gameState.playerTurnIndex = { team1: 0, team2: 0 };
 
+        // Start heartbeat for state sync
+        startHeartbeat(socket.roomCode);
+
         io.to(socket.roomCode).emit('partyGame:started', room.gameState);
     });
 
@@ -993,6 +1594,11 @@ io.on('connection', (socket) => {
 
         const room = getRoom(socket.roomCode);
         if (!room) return;
+
+        // Reset face-off chain state for new battle
+        room.gameState.faceOffAttempts = [];
+        room.gameState.faceOffPhase = 'buzzer';
+        room.gameState.controllingTeam = null;
 
         const { team1Players, team2Players, playerTurnIndex, players } = room.gameState;
 
@@ -1014,7 +1620,10 @@ io.on('connection', (socket) => {
 
         room.gameState.currentBattlePlayers = [team1PlayerId, team2PlayerId];
         room.gameState.faceOffActive = true;
-        room.gameState.currentTurnPlayer = null; // Both can answer during face-off
+        room.gameState.currentTurnPlayer = null; // Will be set after buzzer
+        room.gameState.buzzerPhase = true;
+        room.gameState.buzzerWinner = null;
+        room.gameState.buzzerLoser = null;
 
         // Get player names for announcement
         const team1Player = players.find(p => p.id === team1PlayerId);
@@ -1041,9 +1650,43 @@ io.on('connection', (socket) => {
 
         io.to(socket.roomCode).emit('turn:changed', {
             currentTurnPlayer: playerId,
+            currentTurnPlayerName: player ? player.name : null,
             playerName: player ? player.name : null,
-            faceOffActive: false
+            faceOffActive: false,
+            faceOffPhase: room.gameState.faceOffPhase
         });
+    });
+
+    // Player buzzes in during face-off
+    socket.on('player:buzz', () => {
+        if (!socket.isPlayer || !socket.roomCode) return;
+
+        const room = getRoom(socket.roomCode);
+        if (!room || !room.gameState.buzzerPhase) return;
+
+        const playerId = socket.playerId;
+
+        // Check if player is in current battle
+        if (!room.gameState.currentBattlePlayers.includes(playerId)) return;
+
+        // First buzz wins
+        if (!room.gameState.buzzerWinner) {
+            room.gameState.buzzerWinner = playerId;
+            room.gameState.buzzerLoser = room.gameState.currentBattlePlayers.find(
+                id => id !== playerId
+            );
+            room.gameState.buzzerPhase = false;
+            room.gameState.currentTurnPlayer = playerId;
+            room.gameState.faceOffActive = false;
+
+            // Emit results to all players
+            const winnerPlayer = room.gameState.players.find(p => p.id === playerId);
+            io.to(socket.roomCode).emit('buzzer:result', {
+                winner: room.gameState.buzzerWinner,
+                loser: room.gameState.buzzerLoser,
+                winnerName: winnerPlayer ? winnerPlayer.name : 'Unknown'
+            });
+        }
     });
 
     // Player submits answer
@@ -1053,29 +1696,62 @@ io.on('connection', (socket) => {
         const room = getRoom(socket.roomCode);
         if (!room || !room.gameState.partyMode) return;
 
-        const playerId = socket.playerId;
-        const { currentBattlePlayers, currentTurnPlayer, faceOffActive } = room.gameState;
-
-        // Check if player is in current battle
-        if (!currentBattlePlayers.includes(playerId)) {
-            socket.emit('player:notYourTurn', { message: "You're not in the current battle" });
+        // ATOMIC: Check AND set flag immediately (no gap for race condition)
+        if (roomAnswerProcessing.get(socket.roomCode)) {
+            socket.emit('player:answerBusy', { message: 'Processing another answer, please wait...' });
             return;
         }
+        roomAnswerProcessing.set(socket.roomCode, true);  // SET IMMEDIATELY after check
 
-        // Check turn (if not face-off)
-        if (!faceOffActive && currentTurnPlayer !== playerId) {
-            socket.emit('player:notYourTurn', { message: "It's not your turn to answer yet!" });
-            return;
+        const playerId = socket.playerId;
+        const { currentBattlePlayers, currentTurnPlayer, faceOffActive, faceOffPhase } = room.gameState;
+
+        // Validation depends on face-off phase - clear flag on each early return
+        if (faceOffPhase !== 'resolved') {
+            // During face-off/chain: must be in the battle
+            if (!currentBattlePlayers.includes(playerId)) {
+                roomAnswerProcessing.set(socket.roomCode, false);
+                socket.emit('player:notYourTurn', { message: "You're not in the current battle" });
+                return;
+            }
+            // During active face-off, either buzzer player can answer
+            // During chain, must be currentTurnPlayer
+            if (!faceOffActive && currentTurnPlayer !== playerId) {
+                roomAnswerProcessing.set(socket.roomCode, false);
+                socket.emit('player:notYourTurn', { message: "It's not your turn to answer yet!" });
+                return;
+            }
+        } else {
+            // After face-off resolved: only currentTurnPlayer can answer
+            if (currentTurnPlayer !== playerId) {
+                roomAnswerProcessing.set(socket.roomCode, false);
+                socket.emit('player:notYourTurn', { message: "It's not your turn to answer yet!" });
+                return;
+            }
         }
 
         // Process the answer (similar to checkAnswer but from player)
         if (!room.gameState.currentQuestion) {
+            roomAnswerProcessing.set(socket.roomCode, false);
             socket.emit('player:error', { message: 'No question loaded' });
             return;
         }
 
         const allAnswers = room.gameState.currentQuestion.answers.map(a => a.text);
         const player = room.gameState.players.find(p => p.id === playerId);
+
+        // Broadcast that player submitted an answer (for "Player says..." popup)
+        io.to(socket.roomCode).emit('partyAnswer:submitted', {
+            playerName: player ? player.name : 'Unknown',
+            playerAnswer: playerAnswer
+        });
+
+        // Also broadcast timer:stopped so players see timer stop immediately
+        io.to(socket.roomCode).emit('timer:stopped');
+
+        // Record start time for minimum delay calculation (prevents animation order bug)
+        const processingStartTime = Date.now();
+        const MIN_RESULT_DELAY = 150; // ms - ensures client has time to set up partyAnswerProcessing
 
         try {
             const response = await callOpenAI(
@@ -1089,6 +1765,12 @@ io.on('connection', (socket) => {
             const jsonResponse = JSON.parse(cleanedResponse);
 
             const isCorrect = jsonResponse.match && jsonResponse.matchedAnswer;
+
+            // Ensure minimum delay before emitting results (fixes animation order bug)
+            const elapsed = Date.now() - processingStartTime;
+            if (elapsed < MIN_RESULT_DELAY) {
+                await new Promise(resolve => setTimeout(resolve, MIN_RESULT_DELAY - elapsed));
+            }
 
             // Add to entry log
             room.gameState.entryLog.push({
@@ -1106,6 +1788,55 @@ io.on('connection', (socket) => {
             });
 
             if (isCorrect) {
+                // Handle steal phase - correct answer
+                if (room.gameState.stealPhase) {
+                    // Find and reveal the matched answer first
+                    const matchedIndex = room.gameState.currentQuestion.answers.findIndex(
+                        ans => ans.text.toLowerCase() === jsonResponse.matchedAnswer.toLowerCase()
+                    );
+
+                    if (matchedIndex !== -1 && !room.gameState.revealedAnswers.includes(matchedIndex)) {
+                        room.gameState.revealedAnswers.push(matchedIndex);
+                        const answer = room.gameState.currentQuestion.answers[matchedIndex];
+                        const points = answer.points;
+                        room.gameState.roundPointsEarned += points;
+
+                        // Track correct guess
+                        if (!room.gameState.correctGuessesThisRound) {
+                            room.gameState.correctGuessesThisRound = [];
+                        }
+                        room.gameState.correctGuessesThisRound.push({
+                            answer: answer.text,
+                            points: points,
+                            playerName: player ? player.name : 'Unknown'
+                        });
+
+                        // Emit answer:correct to reveal on board
+                        io.to(socket.roomCode).emit('answer:correct', {
+                            index: matchedIndex,
+                            answerText: answer.text,
+                            points,
+                            roundPointsEarned: room.gameState.roundPointsEarned,
+                            playerName: player ? player.name : 'Unknown',
+                            playerAnswer: playerAnswer
+                        });
+                    }
+
+                    // Stealing team wins all revealed points (now includes new answer)
+                    room.gameState.roundWinningTeam = room.gameState.stealingTeam;
+                    room.gameState.stealPhase = false;
+
+                    io.to(socket.roomCode).emit('steal:success', {
+                        stealingTeam: room.gameState.stealingTeam,
+                        stealPlayerName: player ? player.name : 'Unknown',
+                        roundPoints: room.gameState.roundPointsEarned
+                    });
+
+                    // Defer entry log update until animation completes
+                    room.gameState.pendingEntryLog = [...room.gameState.entryLog];
+                    return;
+                }
+
                 const matchedIndex = room.gameState.currentQuestion.answers.findIndex(
                     ans => ans.text.toLowerCase() === jsonResponse.matchedAnswer.toLowerCase()
                 );
@@ -1130,27 +1861,260 @@ io.on('connection', (socket) => {
                         answerText: answer.text,
                         points,
                         roundPointsEarned: room.gameState.roundPointsEarned,
-                        playerName: player ? player.name : 'Unknown'
+                        playerName: player ? player.name : 'Unknown',
+                        playerAnswer: playerAnswer
+                    });
+
+                    // Check if board is cleared (all answers revealed)
+                    const totalAnswers = room.gameState.currentQuestion.answers.length;
+                    const revealedCount = room.gameState.revealedAnswers.length;
+
+                    if (revealedCount === totalAnswers && !room.gameState.stealPhase) {
+                        room.gameState.roundWinningTeam = room.gameState.controllingTeam;
+
+                        io.to(socket.roomCode).emit('board:cleared', {
+                            winningTeam: room.gameState.controllingTeam,
+                            winningTeamName: room.gameState.controllingTeam === 1
+                                ? room.gameState.team1Name
+                                : room.gameState.team2Name,
+                            roundPoints: room.gameState.roundPointsEarned
+                        });
+                    }
+
+                    // If face-off is still active (chain phase), resolve it
+                    if (room.gameState.faceOffPhase === 'chain' || room.gameState.faceOffPhase === 'buzzer') {
+                        const winningTeam = player.team;
+                        const teamPlayers = winningTeam === 1 ? room.gameState.team1Players : room.gameState.team2Players;
+
+                        if (teamPlayers.length === 0) {
+                            console.error('No players on winning team');
+                            return;
+                        }
+
+                        const currentIdx = teamPlayers.indexOf(playerId);
+                        const safeIdx = currentIdx === -1 ? teamPlayers.length - 1 : currentIdx;
+                        const nextIdx = (safeIdx + 1) % teamPlayers.length;
+                        const nextPlayerId = teamPlayers[nextIdx];
+                        const nextPlayer = room.gameState.players.find(p => p.id === nextPlayerId);
+
+                        room.gameState.currentTurnPlayer = nextPlayerId;
+                        room.gameState.controllingTeam = winningTeam;
+                        room.gameState.faceOffPhase = 'resolved';
+                        room.gameState.faceOffActive = false;
+
+                        io.to(socket.roomCode).emit('faceOff:won', {
+                            winningTeam,
+                            winningPlayerId: playerId,
+                            winningPlayerName: player ? player.name : 'Unknown',
+                            nextPlayerId: nextPlayerId,
+                            nextPlayerName: nextPlayer ? nextPlayer.name : 'Unknown'
+                        });
+                    } else if (room.gameState.faceOffPhase === 'resolved') {
+                        // After face-off resolved, advance to next player on controlling team
+                        const teamPlayers = room.gameState.controllingTeam === 1
+                            ? room.gameState.team1Players
+                            : room.gameState.team2Players;
+
+                        if (teamPlayers.length === 0) {
+                            console.error('No players on controlling team');
+                            return;
+                        }
+
+                        const currentIdx = teamPlayers.indexOf(playerId);
+                        const safeIdx = currentIdx === -1 ? teamPlayers.length - 1 : currentIdx;
+                        const nextIdx = (safeIdx + 1) % teamPlayers.length;
+                        const nextPlayerId = teamPlayers[nextIdx];
+                        const nextPlayer = room.gameState.players.find(p => p.id === nextPlayerId);
+
+                        room.gameState.currentTurnPlayer = nextPlayerId;
+
+                        // Store pending turn change - will be emitted when display signals animation complete
+                        room.gameState.pendingTurnChange = {
+                            currentTurnPlayer: nextPlayerId,
+                            currentTurnPlayerName: nextPlayer ? nextPlayer.name : 'Unknown',
+                            faceOffActive: false,
+                            faceOffPhase: room.gameState.faceOffPhase
+                        };
+
+                        // Safety: emit turn change after 8 seconds if display doesn't respond
+                        setTimeout(() => {
+                            if (room.gameState.pendingTurnChange) {
+                                io.to(socket.roomCode).emit('turn:changed', room.gameState.pendingTurnChange);
+                                room.gameState.pendingTurnChange = null;
+                            }
+                        }, 8000);
+                    }
+                } else if (matchedIndex !== -1) {
+                    // Answer was correct but already revealed - tell player to try again
+                    socket.emit('answer:duplicate', {
+                        playerAnswer: playerAnswer,
+                        matchedAnswer: jsonResponse.matchedAnswer
                     });
                 }
             } else {
-                if (room.gameState.strikes < 3) {
-                    room.gameState.strikes++;
+                // Handle steal phase - wrong answer
+                if (room.gameState.stealPhase) {
+                    // Controlling team keeps points
+                    room.gameState.roundWinningTeam = room.gameState.controllingTeam;
+                    room.gameState.stealPhase = false;
+
+                    io.to(socket.roomCode).emit('steal:failed', {
+                        controllingTeam: room.gameState.controllingTeam,
+                        stealPlayerName: player ? player.name : 'Unknown',
+                        roundPoints: room.gameState.roundPointsEarned
+                    });
+
+                    // Defer entry log update until animation completes
+                    room.gameState.pendingEntryLog = [...room.gameState.entryLog];
+                    return;
                 }
 
-                io.to(socket.roomCode).emit('answer:incorrect', {
-                    strikes: room.gameState.strikes,
-                    playerName: player ? player.name : 'Unknown'
-                });
+                // Face-off chain logic: pass to next player (NO strike increment during face-off)
+                if (room.gameState.faceOffPhase !== 'resolved') {
+                    // Emit X popup during face-off (strikes stay at 0)
+                    io.to(socket.roomCode).emit('answer:incorrect', {
+                        strikes: room.gameState.strikes,
+                        playerName: player ? player.name : 'Unknown',
+                        playerAnswer: playerAnswer
+                    });
+
+                    // Add to attempts
+                    if (!room.gameState.faceOffAttempts.includes(playerId)) {
+                        room.gameState.faceOffAttempts.push(playerId);
+                    }
+                    room.gameState.faceOffPhase = 'chain';
+
+                    // Get next player in chain
+                    let nextPlayer = getNextChainPlayer(room);
+
+                    if (!nextPlayer) {
+                        // Everyone has tried - reset and cycle back to buzzer winner
+                        room.gameState.faceOffAttempts = [];
+                        const buzzerWinnerPlayer = room.gameState.players.find(
+                            p => p.id === room.gameState.buzzerWinner
+                        );
+                        nextPlayer = buzzerWinnerPlayer || getNextChainPlayer(room);
+                    }
+
+                    if (nextPlayer) {
+                        room.gameState.currentTurnPlayer = nextPlayer.id;
+                        // Add next player to battle so they pass validation
+                        if (!room.gameState.currentBattlePlayers.includes(nextPlayer.id)) {
+                            room.gameState.currentBattlePlayers.push(nextPlayer.id);
+                        }
+                        io.to(socket.roomCode).emit('faceOff:chainNext', {
+                            nextPlayerId: nextPlayer.id,
+                            nextPlayerName: nextPlayer.name,
+                            team: nextPlayer.team
+                        });
+                    }
+                } else {
+                    // Face-off is resolved - increment strike first, then emit
+                    if (room.gameState.strikes < 3) {
+                        room.gameState.strikes++;
+                    }
+
+                    // Emit X popup with UPDATED strike count
+                    io.to(socket.roomCode).emit('answer:incorrect', {
+                        strikes: room.gameState.strikes,
+                        playerName: player ? player.name : 'Unknown',
+                        playerAnswer: playerAnswer
+                    });
+
+                    // Check for 3 strikes - trigger steal phase
+                    if (room.gameState.strikes === 3) {
+                        // Trigger steal phase
+                        const opposingTeam = room.gameState.controllingTeam === 1 ? 2 : 1;
+                        const opposingPlayers = opposingTeam === 1
+                            ? room.gameState.team1Players
+                            : room.gameState.team2Players;
+
+                        if (opposingPlayers.length > 0) {
+                            const stealPlayerId = opposingPlayers[0];
+                            const stealPlayer = room.gameState.players.find(p => p.id === stealPlayerId);
+
+                            room.gameState.stealPhase = true;
+                            room.gameState.stealingTeam = opposingTeam;
+                            room.gameState.stealPlayerId = stealPlayerId;
+                            room.gameState.currentTurnPlayer = stealPlayerId;
+
+                            // Defer entry log update until animation completes
+                            room.gameState.pendingEntryLog = [...room.gameState.entryLog];
+
+                            // Defer steal phase until X animation completes
+                            room.gameState.pendingStealPhase = {
+                                stealingTeam: opposingTeam,
+                                stealingTeamName: opposingTeam === 1 ? room.gameState.team1Name : room.gameState.team2Name,
+                                stealPlayerId: stealPlayerId,
+                                stealPlayerName: stealPlayer ? stealPlayer.name : 'Unknown',
+                                roundPoints: room.gameState.roundPointsEarned
+                            };
+
+                            // Safety: emit steal phase after 8 seconds if display doesn't respond
+                            setTimeout(() => {
+                                if (room.gameState.pendingStealPhase) {
+                                    io.to(socket.roomCode).emit('steal:phase', room.gameState.pendingStealPhase);
+                                    room.gameState.pendingStealPhase = null;
+                                }
+                            }, 8000);
+                            return; // Don't pass turn normally
+                        } else {
+                            // No opposing players - controlling team keeps points
+                            room.gameState.roundWinningTeam = room.gameState.controllingTeam;
+                        }
+                    }
+
+                    // Advance to next player on controlling team
+                    const teamPlayers = room.gameState.controllingTeam === 1
+                        ? room.gameState.team1Players
+                        : room.gameState.team2Players;
+
+                    if (teamPlayers.length === 0) {
+                        console.error('No players on controlling team');
+                        return;
+                    }
+
+                    const currentIdx = teamPlayers.indexOf(playerId);
+                    const safeIdx = currentIdx === -1 ? teamPlayers.length - 1 : currentIdx;
+                    const nextIdx = (safeIdx + 1) % teamPlayers.length;
+                    const nextPlayerId = teamPlayers[nextIdx];
+                    const nextPlayer = room.gameState.players.find(p => p.id === nextPlayerId);
+
+                    room.gameState.currentTurnPlayer = nextPlayerId;
+
+                    // Store pending turn change - will be emitted when display signals animation complete
+                    room.gameState.pendingTurnChange = {
+                        currentTurnPlayer: nextPlayerId,
+                        currentTurnPlayerName: nextPlayer ? nextPlayer.name : 'Unknown',
+                        faceOffActive: false,
+                        faceOffPhase: room.gameState.faceOffPhase
+                    };
+
+                    // Safety: emit turn change after 8 seconds if display doesn't respond
+                    setTimeout(() => {
+                        if (room.gameState.pendingTurnChange) {
+                            io.to(socket.roomCode).emit('turn:changed', room.gameState.pendingTurnChange);
+                            room.gameState.pendingTurnChange = null;
+                        }
+                        if (room.gameState.pendingEntryLog) {
+                            io.to(socket.roomCode).emit('entryLog:updated', {
+                                entryLog: room.gameState.pendingEntryLog
+                            });
+                            room.gameState.pendingEntryLog = null;
+                        }
+                    }, 8000);
+                }
             }
 
-            io.to(socket.roomCode).emit('entryLog:updated', {
-                entryLog: room.gameState.entryLog
-            });
+            // Defer entry log update until animation completes
+            room.gameState.pendingEntryLog = [...room.gameState.entryLog];
 
         } catch (error) {
             console.error('Error checking player answer:', error);
             socket.emit('player:error', { message: error.message });
+        } finally {
+            // Always clear processing flag
+            roomAnswerProcessing.set(socket.roomCode, false);
         }
     });
 
@@ -1170,12 +2134,59 @@ io.on('connection', (socket) => {
                     io.to(socket.roomCode).emit('host:disconnected', { reason: 'Host disconnected' });
                 }
                 if (socket.isPlayer && socket.playerId) {
-                    // Remove player from room
-                    room.gameState.players = room.gameState.players.filter(p => p.id !== socket.playerId);
-                    room.gameState.team1Players = room.gameState.team1Players.filter(id => id !== socket.playerId);
-                    room.gameState.team2Players = room.gameState.team2Players.filter(id => id !== socket.playerId);
+                    // Mark player as disconnected instead of removing them
+                    const player = room.gameState.players.find(p => p.id === socket.playerId);
+                    // Only mark as disconnected if this socket is still the active socket
+                    // (prevents race condition where player reconnected before old disconnect fires)
+                    if (player && player.socketId === socket.id) {
+                        player.disconnected = true;
+                        player.socketId = null;
+                        console.log(`Player ${player.name} (${socket.playerId}) marked as disconnected`);
+                    }
 
-                    // Notify everyone
+                    // If this player was the current turn player, skip to next player
+                    if (room.gameState.currentTurnPlayer === socket.playerId && room.gameState.controllingTeam) {
+                        const teamPlayers = room.gameState.controllingTeam === 1
+                            ? room.gameState.team1Players
+                            : room.gameState.team2Players;
+
+                        // Find next connected player on the team
+                        const currentIdx = teamPlayers.indexOf(socket.playerId);
+                        let nextIdx = currentIdx;
+                        let attempts = 0;
+                        let nextPlayerId = null;
+
+                        while (attempts < teamPlayers.length) {
+                            nextIdx = (nextIdx + 1) % teamPlayers.length;
+                            const candidateId = teamPlayers[nextIdx];
+                            const candidatePlayer = room.gameState.players.find(p => p.id === candidateId);
+                            if (candidatePlayer && !candidatePlayer.disconnected) {
+                                nextPlayerId = candidateId;
+                                break;
+                            }
+                            attempts++;
+                        }
+
+                        if (nextPlayerId) {
+                            const nextPlayer = room.gameState.players.find(p => p.id === nextPlayerId);
+                            room.gameState.currentTurnPlayer = nextPlayerId;
+
+                            io.to(socket.roomCode).emit('turn:skipped', {
+                                skippedPlayerId: socket.playerId,
+                                skippedPlayerName: player ? player.name : 'Unknown',
+                                reason: 'disconnected'
+                            });
+
+                            io.to(socket.roomCode).emit('turn:changed', {
+                                currentTurnPlayer: nextPlayerId,
+                                currentTurnPlayerName: nextPlayer ? nextPlayer.name : 'Unknown',
+                                faceOffActive: room.gameState.faceOffActive,
+                                faceOffPhase: room.gameState.faceOffPhase
+                            });
+                        }
+                    }
+
+                    // Notify everyone about player disconnect (keep them in lists)
                     io.to(socket.roomCode).emit('players:updated', {
                         players: room.gameState.players
                     });
@@ -1184,6 +2195,16 @@ io.on('connection', (socket) => {
                         team1Players: room.gameState.team1Players,
                         team2Players: room.gameState.team2Players
                     });
+                    io.to(socket.roomCode).emit('player:disconnected', {
+                        playerId: socket.playerId,
+                        playerName: player ? player.name : 'Unknown'
+                    });
+                }
+
+                // Stop heartbeat if both display and host disconnected
+                if (!room.displaySocketId && !room.hostSocketId && room.heartbeatInterval) {
+                    clearInterval(room.heartbeatInterval);
+                    room.heartbeatInterval = null;
                 }
             }
         }
@@ -1194,9 +2215,21 @@ io.on('connection', (socket) => {
 setInterval(() => {
     const oneHourAgo = Date.now() - (60 * 60 * 1000);
     for (const [code, room] of gameRooms.entries()) {
-        if (room.createdAt < oneHourAgo && !room.displaySocketId && !room.hostSocketId) {
-            gameRooms.delete(code);
-            console.log(`Cleaned up old room: ${code}`);
+        if (room.createdAt < oneHourAgo) {
+            // Check if sockets are actually connected (not just stored IDs)
+            const displayConnected = room.displaySocketId && io.sockets.sockets.get(room.displaySocketId);
+            const hostConnected = room.hostSocketId && io.sockets.sockets.get(room.hostSocketId);
+
+            if (!displayConnected && !hostConnected) {
+                // Clear heartbeat interval if running
+                if (room.heartbeatInterval) {
+                    clearInterval(room.heartbeatInterval);
+                }
+                // Clear roomAnswerProcessing entry
+                roomAnswerProcessing.delete(code);
+                gameRooms.delete(code);
+                console.log(`Cleaned up old room: ${code}`);
+            }
         }
     }
 }, 60 * 60 * 1000);

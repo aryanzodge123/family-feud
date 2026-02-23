@@ -88,7 +88,7 @@
             <div class="qr-info">
                 <p class="qr-room-label">Room Code:</p>
                 <p class="qr-room-code" id="party-host-room-code">------</p>
-                <p class="qr-host-url" id="party-host-url"></p>
+                <p class="qr-host-url copyable-url" id="party-host-url" title="Click to copy"></p>
             </div>
 
             <div class="qr-status">
@@ -100,7 +100,7 @@
                 <button type="button" id="party-back-to-mode-btn" class="back-btn">
                     ← Back
                 </button>
-                <button type="button" id="party-host-next-btn" class="continue-btn" style="display: none;">
+                <button type="button" id="party-host-next-btn" class="continue-btn">
                     Next →
                 </button>
             </div>
@@ -108,25 +108,34 @@
     </div>
 
     <!-- Party Mode: Player Join Screen -->
-    <div id="party-player-join-screen" class="qr-screen" style="display: none;">
-        <div class="qr-container">
+    <div id="party-player-join-screen" class="qr-screen party-player-join-screen" style="display: none;">
+        <div class="party-join-container">
             <h1 class="qr-logo">FAMILY FEUD</h1>
             <p class="qr-subtitle">Party Mode - Players Join</p>
 
-            <div class="qr-code-wrapper">
-                <img id="party-player-qr-img" class="qr-code-img" src="" alt="QR Code">
-                <div id="party-player-qr-loading" class="qr-loading">Generating QR Code...</div>
-            </div>
+            <div class="party-join-content">
+                <!-- Left side: QR Code, Link, Room Code -->
+                <div class="party-join-left">
+                    <div class="qr-code-wrapper">
+                        <img id="party-player-qr-img" class="qr-code-img" src="" alt="QR Code">
+                        <div id="party-player-qr-loading" class="qr-loading">Generating QR Code...</div>
+                    </div>
 
-            <div class="qr-info">
-                <p class="qr-room-label">Room Code:</p>
-                <p class="qr-room-code" id="party-player-room-code">------</p>
-            </div>
+                    <div class="qr-info">
+                        <p class="qr-room-label">Room Code:</p>
+                        <p class="qr-room-code" id="party-player-room-code">------</p>
+                        <p class="qr-host-url copyable-url" id="party-player-url" title="Click to copy"></p>
+                    </div>
+                </div>
 
-            <div class="party-player-list-container">
-                <p class="party-player-list-label">Players Joined:</p>
-                <div class="party-player-list" id="party-player-list">
-                    <div class="party-player-empty">Waiting for players...</div>
+                <!-- Right side: Player List -->
+                <div class="party-join-right">
+                    <div class="party-player-list-container-wide">
+                        <p class="party-player-list-label">Players Joined:</p>
+                        <div class="party-player-list-wide" id="party-player-list">
+                            <div class="party-player-empty">Waiting for players...</div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -172,16 +181,6 @@
                 </div>
             </div>
 
-            <div class="setup-section">
-                <label class="setup-label">Number of Rounds</label>
-                <div class="rounds-selector">
-                    <button type="button" class="round-btn party-round-btn" data-rounds="3">3</button>
-                    <button type="button" class="round-btn party-round-btn" data-rounds="5">5</button>
-                    <button type="button" class="round-btn party-round-btn selected" data-rounds="7">7</button>
-                    <button type="button" class="round-btn party-round-btn" data-rounds="10">10</button>
-                </div>
-            </div>
-
             <div class="setup-buttons">
                 <button type="button" id="party-team-back-btn" class="back-btn">
                     ← Back
@@ -190,6 +189,46 @@
                     START GAME
                 </button>
             </div>
+        </div>
+    </div>
+
+    <!-- Party Mode: Configure Game Screen -->
+    <div id="party-config-screen" class="setup-screen" style="display: none;">
+        <div class="setup-container party-config-container">
+            <h1 class="setup-logo">FAMILY FEUD</h1>
+            <p class="setup-subtitle">Game Configuration</p>
+
+            <div class="config-container">
+                <div class="config-section">
+                    <h2 class="config-section-title">Rounds</h2>
+                    <div class="config-value" id="config-rounds-display">7</div>
+                </div>
+
+                <div class="config-section">
+                    <h2 class="config-section-title">Timer Settings</h2>
+                    <div class="config-timer-status" id="config-timer-status">Enabled</div>
+                    <div class="config-timer-details" id="config-timer-details">
+                        <div class="config-row">
+                            <span class="config-label">Buzzer time:</span>
+                            <span class="config-value-small" id="config-buzzer-time">7s</span>
+                        </div>
+                        <div class="config-row">
+                            <span class="config-label">After buzzer:</span>
+                            <span class="config-value-small" id="config-after-buzzer-time">15s</span>
+                        </div>
+                        <div class="config-row">
+                            <span class="config-label">Regular play:</span>
+                            <span class="config-value-small" id="config-regular-time">35s</span>
+                        </div>
+                        <div class="config-row">
+                            <span class="config-label">Steal time:</span>
+                            <span class="config-value-small" id="config-steal-time">2:00</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <p class="config-hint">Host is configuring the game...</p>
         </div>
     </div>
 
@@ -208,6 +247,27 @@
                     <span class="battle-player-team">Team 2</span>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- Buzzer Winner Popup -->
+    <div id="buzzer-winner-popup" class="buzzer-winner-popup" style="display: none;">
+        <div class="buzzer-winner-popup-content">
+            <h2 class="buzzer-winner-popup-title" id="buzzer-winner-text">Player pressed the button first!</h2>
+        </div>
+    </div>
+
+    <!-- Steal Phase Popup -->
+    <div id="steal-popup" class="steal-popup" style="display: none;">
+        <div class="steal-popup-content">
+            <h2 class="steal-popup-title" id="steal-popup-text">Team 1 gets to steal!</h2>
+        </div>
+    </div>
+
+    <!-- Game Start Countdown Popup -->
+    <div id="countdown-popup" class="countdown-popup" style="display: none;">
+        <div class="countdown-content">
+            <span id="countdown-number" class="countdown-number">3</span>
         </div>
     </div>
 
@@ -505,6 +565,9 @@
             <div class="question-content">
                 <div class="question-label">Round <span id="current-round">1</span> of <span id="total-rounds">7</span></div>
                 <div class="question" id="question-text">Click "New Question" to start</div>
+                <div id="current-turn-display" class="current-turn-display">
+                    <span id="current-turn-text">Current Turn: -</span>
+                </div>
             </div>
             
             <!-- Team 2 Score (Right) -->
@@ -779,6 +842,15 @@
     <div id="big-strike" class="big-strike">✗</div>
     <div id="times-up" class="times-up">TIME'S UP!</div>
 
+    <!-- Player Says Popup (Party Mode) -->
+    <div id="player-says-popup" class="player-says-popup" style="display: none;">
+        <div class="player-says-content">
+            <div class="player-says-name"><span id="player-says-name-text">Player</span> says</div>
+            <div class="player-says-answer" id="player-says-answer-text">"Answer"</div>
+            <div class="player-says-survey">Survey says...</div>
+        </div>
+    </div>
+
     <!-- Fullscreen Toggle Button -->
     <button class="fullscreen-btn" id="fullscreen-btn" title="Toggle Fullscreen">
         <span class="fullscreen-icon" id="fullscreen-icon">⛶</span>
@@ -788,6 +860,85 @@
     <button class="help-btn" id="help-btn" title="How to Play">
         <span class="help-icon">?</span>
     </button>
+
+    <!-- Players Panel Toggle Button (Party Mode) -->
+    <button class="players-btn" id="players-btn" title="Show Players" style="display: none;">
+        <span class="players-icon">👥</span>
+    </button>
+
+    <!-- QR Codes Button (Party Mode) -->
+    <button class="qr-codes-btn" id="qr-codes-btn" title="Join Game" style="display: none;">
+        <span class="qr-codes-icon">📱</span>
+    </button>
+
+    <!-- Players Panel (Party Mode) -->
+    <div id="players-panel" class="players-panel" style="display: none;">
+        <div class="players-panel-header">
+            <h3 class="players-panel-title">Players</h3>
+            <button class="players-panel-close" id="players-panel-close">✕</button>
+        </div>
+        <div class="players-panel-content">
+            <div class="players-current-turn" id="players-current-turn">
+                <span class="current-turn-label">Current Turn:</span>
+                <span class="current-turn-name" id="current-turn-name">-</span>
+            </div>
+            <div class="players-teams-container">
+                <div class="players-team players-team-1">
+                    <h4 class="players-team-title" id="players-team1-title">Team 1</h4>
+                    <div class="players-team-list" id="players-team1-list">
+                        <div class="players-empty">No players</div>
+                    </div>
+                </div>
+                <div class="players-team players-team-2">
+                    <h4 class="players-team-title" id="players-team2-title">Team 2</h4>
+                    <div class="players-team-list" id="players-team2-list">
+                        <div class="players-empty">No players</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- QR Codes Panel (Party Mode) -->
+    <div id="qr-codes-panel" class="qr-codes-panel" style="display: none;">
+        <div class="qr-codes-panel-header">
+            <h3 class="qr-codes-panel-title">Join Game</h3>
+            <button class="qr-codes-panel-close" id="qr-codes-panel-close">✕</button>
+        </div>
+        <div class="qr-codes-panel-content">
+            <div class="qr-codes-grid">
+                <!-- Host QR Section -->
+                <div class="qr-section qr-section-host">
+                    <h4 class="qr-section-title">Host</h4>
+                    <div class="qr-section-code-wrapper">
+                        <img id="panel-host-qr-img" class="qr-section-img" src="" alt="Host QR Code">
+                    </div>
+                    <div class="qr-section-info">
+                        <p class="qr-section-url" id="panel-host-url"></p>
+                        <p class="qr-section-room-label">Room Code:</p>
+                        <p class="qr-section-room-code" id="panel-host-room-code">------</p>
+                    </div>
+                    <div class="qr-section-status">
+                        <div class="qr-section-status-indicator" id="panel-host-status-indicator"></div>
+                        <span id="panel-host-status-text">No host connected</span>
+                    </div>
+                </div>
+                <!-- Player QR Section -->
+                <div class="qr-section qr-section-player">
+                    <h4 class="qr-section-title">Player</h4>
+                    <div class="qr-section-code-wrapper">
+                        <img id="panel-player-qr-img" class="qr-section-img" src="" alt="Player QR Code">
+                    </div>
+                    <div class="qr-section-info">
+                        <p class="qr-section-url" id="panel-player-url"></p>
+                        <p class="qr-section-room-label">Room Code:</p>
+                        <p class="qr-section-room-code" id="panel-player-room-code">------</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
 
     <!-- Socket.IO Client -->
     <script src="/socket.io/socket.io.js"></script>

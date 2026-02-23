@@ -28,7 +28,95 @@ let isPartyMode = false;
 let partyPlayers = [];
 let currentBattlePlayers = [];
 let currentTurnPlayer = null;
+let currentTurnPlayerName = null;
 let faceOffActive = false;
+let faceOffAnswerPhase = false;
+let playerSaysPopupVisible = false;
+let partyAnswerProcessing = false;
+let partyProcessingTimeout = null;
+let partyProcessingSafetyTimeout = null;  // Safety timeout for resetting flags
+let answerResultQueue = [];  // Queue of answer results
+let animationInProgress = false;
+let pendingEntryLog = null;
+let pendingTimerStart = null;
+let pendingStealPhaseData = null;
+let hostConnected = false;
+let stealPhaseActive = false;
+let stealingTeamNumber = null;
+let pendingStealTimeout = null;
+let pendingStealData = null;
+let roundWinnerMessage = null;
+let timerDisplayStopped = false;  // Prevents timer:tick from updating display after answer submitted
+
+// Popup Queue System
+let popupQueue = [];
+let popupActive = false;
+let popupSafetyTimeout = null;
+const MAX_POPUP_QUEUE_SIZE = 10;
+
+// Popup Queue Functions
+function queuePopup(showFn, hideFn, duration) {
+    // Drop oldest popups if queue is full (prevents memory leak)
+    if (popupQueue.length >= MAX_POPUP_QUEUE_SIZE) {
+        console.warn('Popup queue full, dropping oldest');
+        popupQueue.shift();
+    }
+    popupQueue.push({ showFn, hideFn, duration });
+    processPopupQueue();
+}
+
+function processPopupQueue() {
+    if (popupActive || animationInProgress || popupQueue.length === 0) return;
+
+    popupActive = true;
+    const { showFn, hideFn, duration } = popupQueue.shift();
+
+    // Safety timeout - force reset if popup doesn't clear
+    popupSafetyTimeout = setTimeout(() => {
+        console.warn('Popup safety timeout triggered');
+        popupActive = false;
+        animationInProgress = false;
+        processPopupQueue();
+    }, duration + 5000); // 5 seconds grace period
+
+    showFn();
+
+    setTimeout(() => {
+        clearTimeout(popupSafetyTimeout);
+        hideFn();
+        popupActive = false;
+        processPopupQueue();
+    }, duration);
+}
+
+// Flush any pending steal popup before queueing Survey Says
+function flushPendingStealPopup() {
+    if (pendingStealTimeout) {
+        clearTimeout(pendingStealTimeout);
+        pendingStealTimeout = null;
+    }
+    if (pendingStealData) {
+        const data = pendingStealData;
+        pendingStealData = null;
+        queuePopup(
+            () => showStealPopup(data.stealingTeam),
+            () => { stealPopup.style.display = 'none'; },
+            5000
+        );
+        startAutoTimer(timerConfig.stealTime, handleAutoTimerExpiry);
+    }
+}
+
+// Auto Timer State
+let autoTimerEnabled = true;
+let timerConfig = {
+    buzzerTime: 7,
+    afterBuzzerTime: 15,
+    regularTime: 35,
+    stealTime: 120
+};
+let autoTimerInterval = null;
+let autoTimerSeconds = 0;
 
 // Load questions from CSV file
 async function loadQuestionsFromCSV() {
@@ -121,6 +209,11 @@ const bigStrike = document.getElementById('big-strike');
 const timesUpDisplay = document.getElementById('times-up');
 const confettiCtx = confettiCanvas.getContext('2d');
 
+// Player Says Popup Elements (Party Mode)
+const playerSaysPopup = document.getElementById('player-says-popup');
+const playerSaysNameText = document.getElementById('player-says-name-text');
+const playerSaysAnswerText = document.getElementById('player-says-answer-text');
+
 // Confetti Configuration
 let confettiPieces = [];
 let confettiAnimationId = null;
@@ -207,17 +300,14 @@ function startConfetti() {
 // Animate confetti
 function animateConfetti() {
     confettiCtx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height);
-    
-    confettiPieces.forEach((piece, index) => {
+
+    // Use filter instead of splice inside forEach to avoid skipping items
+    confettiPieces = confettiPieces.filter(piece => {
         piece.update();
         piece.draw();
-        
-        // Remove pieces that are off screen
-        if (piece.y > confettiCanvas.height + 50) {
-            confettiPieces.splice(index, 1);
-        }
+        return piece.y <= confettiCanvas.height + 50;
     });
-    
+
     if (confettiPieces.length > 0) {
         confettiAnimationId = requestAnimationFrame(animateConfetti);
     } else {
@@ -323,6 +413,7 @@ const partyPlayerJoinScreen = document.getElementById('party-player-join-screen'
 const partyPlayerQrImg = document.getElementById('party-player-qr-img');
 const partyPlayerQrLoading = document.getElementById('party-player-qr-loading');
 const partyPlayerRoomCode = document.getElementById('party-player-room-code');
+const partyPlayerUrl = document.getElementById('party-player-url');
 const partyPlayerList = document.getElementById('party-player-list');
 const partyPlayerBackBtn = document.getElementById('party-player-back-btn');
 const partyPlayerNextBtn = document.getElementById('party-player-next-btn');
@@ -337,9 +428,54 @@ const partyTeamBackBtn = document.getElementById('party-team-back-btn');
 const partyStartGameBtn = document.getElementById('party-start-game-btn');
 const partyRoundBtns = document.querySelectorAll('.party-round-btn');
 
+// Configure Game Screen Elements (Party Mode)
+const partyConfigScreen = document.getElementById('party-config-screen');
+const configRoundsDisplay = document.getElementById('config-rounds-display');
+const configTimerStatus = document.getElementById('config-timer-status');
+const configTimerDetails = document.getElementById('config-timer-details');
+const configBuzzerTime = document.getElementById('config-buzzer-time');
+const configAfterBuzzerTime = document.getElementById('config-after-buzzer-time');
+const configRegularTime = document.getElementById('config-regular-time');
+const configStealTime = document.getElementById('config-steal-time');
+
 const battlePopup = document.getElementById('battle-popup');
 const battlePlayer1Name = document.getElementById('battle-player1-name');
 const battlePlayer2Name = document.getElementById('battle-player2-name');
+
+// Countdown popup elements
+const countdownPopup = document.getElementById('countdown-popup');
+const countdownNumber = document.getElementById('countdown-number');
+
+// Steal popup elements
+const stealPopup = document.getElementById('steal-popup');
+const stealPopupText = document.getElementById('steal-popup-text');
+
+// Current turn display elements
+const currentTurnDisplay = document.getElementById('current-turn-display');
+const currentTurnText = document.getElementById('current-turn-text');
+
+// Players Panel Elements (Party Mode)
+const playersBtn = document.getElementById('players-btn');
+const playersPanel = document.getElementById('players-panel');
+const playersPanelClose = document.getElementById('players-panel-close');
+const currentTurnName = document.getElementById('current-turn-name');
+const playersTeam1Title = document.getElementById('players-team1-title');
+const playersTeam2Title = document.getElementById('players-team2-title');
+const playersTeam1List = document.getElementById('players-team1-list');
+const playersTeam2List = document.getElementById('players-team2-list');
+
+// QR Codes Panel Elements (Party Mode)
+const qrCodesBtn = document.getElementById('qr-codes-btn');
+const qrCodesPanel = document.getElementById('qr-codes-panel');
+const qrCodesPanelClose = document.getElementById('qr-codes-panel-close');
+const panelHostQrImg = document.getElementById('panel-host-qr-img');
+const panelHostUrl = document.getElementById('panel-host-url');
+const panelHostRoomCode = document.getElementById('panel-host-room-code');
+const panelHostStatusIndicator = document.getElementById('panel-host-status-indicator');
+const panelHostStatusText = document.getElementById('panel-host-status-text');
+const panelPlayerQrImg = document.getElementById('panel-player-qr-img');
+const panelPlayerUrl = document.getElementById('panel-player-url');
+const panelPlayerRoomCode = document.getElementById('panel-player-room-code');
 
 // Login Screen Elements
 const loginScreen = document.getElementById('login-screen');
@@ -488,6 +624,10 @@ async function init() {
     partyTeamBackBtn.addEventListener('click', goBackToPartyPlayerJoin);
     partyStartGameBtn.addEventListener('click', startPartyGame);
     setupPartyRoundButtons();
+
+    // Copyable URL click handlers
+    partyHostUrl.addEventListener('click', () => copyUrlToClipboard(partyHostUrl));
+    partyPlayerUrl.addEventListener('click', () => copyUrlToClipboard(partyPlayerUrl));
     
     // Login screen event listeners
     loginBtn.addEventListener('click', handleLogin);
@@ -619,7 +759,15 @@ async function init() {
     // Fullscreen toggle event listener
     fullscreenBtn.addEventListener('click', toggleFullscreen);
     document.addEventListener('fullscreenchange', updateFullscreenIcon);
-    
+
+    // Players panel toggle (party mode)
+    playersBtn.addEventListener('click', togglePlayersPanel);
+    playersPanelClose.addEventListener('click', togglePlayersPanel);
+
+    // QR codes panel toggle (party mode)
+    qrCodesBtn.addEventListener('click', toggleQrCodesPanel);
+    qrCodesPanelClose.addEventListener('click', toggleQrCodesPanel);
+
     // Handle orientation changes (for mobile timer toggle)
     window.addEventListener('orientationchange', handleOrientationChange);
     window.matchMedia('(orientation: landscape)').addEventListener('change', handleOrientationChange);
@@ -738,11 +886,17 @@ function backToModeFromParty() {
     isPartyMode = false;
     isDisplayMode = false;
     partyPlayers = [];
+    hostConnected = false;
 
     partyHostQrScreen.style.display = 'none';
     partyPlayerJoinScreen.style.display = 'none';
     partyTeamAssignmentScreen.style.display = 'none';
     modeScreen.style.display = 'flex';
+
+    // Hide party mode buttons
+    playersBtn.style.display = 'none';
+    qrCodesBtn.style.display = 'none';
+    qrCodesPanel.style.display = 'none';
 
     // Reset party screens
     resetPartyScreens();
@@ -754,7 +908,6 @@ function resetPartyScreens() {
     partyHostQrLoading.style.display = 'block';
     partyHostQrLoading.textContent = 'Generating QR Code...';
     partyHostRoomCode.textContent = '------';
-    partyHostNextBtn.style.display = 'none';
     partyHostStatusIndicator.className = 'qr-status-indicator';
     partyHostStatusText.textContent = 'Scan with your phone to become the host';
 
@@ -777,7 +930,17 @@ async function goToPartyPlayerJoin() {
 
     partyPlayerRoomCode.textContent = roomCode;
 
-    // Get player QR code
+    // Notify host device of screen change
+    if (socket) {
+        socket.emit('partyScreen:navigate', { screen: 'lobby' });
+    }
+
+    // Load player QR code
+    await loadPartyPlayerQRCode();
+}
+
+// Load party player QR code
+async function loadPartyPlayerQRCode() {
     try {
         const qrResponse = await fetch(`/api/player-qr-code?room=${roomCode}`);
         const qrData = await qrResponse.json();
@@ -785,6 +948,7 @@ async function goToPartyPlayerJoin() {
         partyPlayerQrImg.src = qrData.qrCode;
         partyPlayerQrImg.style.display = 'block';
         partyPlayerQrLoading.style.display = 'none';
+        partyPlayerUrl.textContent = qrData.playerUrl;
     } catch (error) {
         console.error('Error getting player QR code:', error);
         partyPlayerQrLoading.textContent = 'Error generating QR code';
@@ -795,12 +959,22 @@ async function goToPartyPlayerJoin() {
 function goBackToPartyHostQr() {
     partyPlayerJoinScreen.style.display = 'none';
     partyHostQrScreen.style.display = 'flex';
+
+    // Notify host device of screen change
+    if (socket) {
+        socket.emit('partyScreen:navigate', { screen: 'qr' });
+    }
 }
 
 // Go to team assignment screen
 function goToPartyTeamAssignment() {
     partyPlayerJoinScreen.style.display = 'none';
     partyTeamAssignmentScreen.style.display = 'flex';
+
+    // Notify host device of screen change
+    if (socket) {
+        socket.emit('partyScreen:navigate', { screen: 'teams' });
+    }
 
     // Render unassigned players
     renderPartyTeamAssignment();
@@ -810,6 +984,31 @@ function goToPartyTeamAssignment() {
 function goBackToPartyPlayerJoin() {
     partyTeamAssignmentScreen.style.display = 'none';
     partyPlayerJoinScreen.style.display = 'flex';
+
+    // Notify host device of screen change
+    if (socket) {
+        socket.emit('partyScreen:navigate', { screen: 'lobby' });
+    }
+}
+
+// Copy URL to clipboard
+function copyUrlToClipboard(element) {
+    const url = element.textContent;
+    if (!url) return;
+
+    navigator.clipboard.writeText(url).then(() => {
+        // Show copied feedback
+        const originalText = element.textContent;
+        element.classList.add('copied');
+        element.textContent = 'Copied!';
+
+        setTimeout(() => {
+            element.classList.remove('copied');
+            element.textContent = originalText;
+        }, 1500);
+    }).catch(err => {
+        console.error('Failed to copy URL:', err);
+    });
 }
 
 // Setup party round buttons
@@ -918,20 +1117,324 @@ function showBattlePopup(team1Player, team2Player) {
     battlePlayer1Name.textContent = team1Player ? team1Player.name : '???';
     battlePlayer2Name.textContent = team2Player ? team2Player.name : '???';
     battlePopup.style.display = 'flex';
+    // setTimeout removed - queue handles timing
+}
 
-    // Auto-hide after 3 seconds
-    setTimeout(() => {
-        battlePopup.style.display = 'none';
-    }, 3000);
+// Show steal popup
+function showStealPopup(stealingTeamNumber) {
+    const teamName = stealingTeamNumber === 1 ? team1Name : team2Name;
+    stealPopupText.textContent = `${teamName} gets to steal!`;
+    stealPopup.style.display = 'flex';
+    // setTimeout removed - queue handles timing
+}
+
+// Show buzzer winner popup
+function showBuzzerWinnerPopup(winnerName) {
+    const buzzerWinnerPopup = document.getElementById('buzzer-winner-popup');
+    const buzzerWinnerText = document.getElementById('buzzer-winner-text');
+    if (!buzzerWinnerPopup || !buzzerWinnerText) return;
+
+    buzzerWinnerText.textContent = `${winnerName} pressed the button first!`;
+    buzzerWinnerPopup.style.display = 'flex';
+    // setTimeout removed - queue handles timing
+}
+
+// Update current turn display
+function updateCurrentTurnDisplay() {
+    if (!currentTurnDisplay || !currentTurnText) return;
+
+    // Show round winner message if set
+    if (roundWinnerMessage) {
+        currentTurnText.textContent = roundWinnerMessage;
+        currentTurnDisplay.classList.remove('face-off');
+        return;
+    }
+
+    if (faceOffActive && currentBattlePlayers && currentBattlePlayers.length === 2) {
+        // Face-off mode: show both players
+        const p1Name = currentBattlePlayers[0] ? currentBattlePlayers[0].name : '???';
+        const p2Name = currentBattlePlayers[1] ? currentBattlePlayers[1].name : '???';
+        currentTurnText.textContent = `Face Off: ${p1Name} vs ${p2Name}`;
+        currentTurnDisplay.classList.add('face-off');
+    } else if (faceOffAnswerPhase && currentTurnPlayerName) {
+        // Face-off answer phase: show "[PlayerName] answer!"
+        currentTurnText.textContent = `${currentTurnPlayerName} answer!`;
+        currentTurnDisplay.classList.remove('face-off');
+    } else if (stealPhaseActive && stealingTeamNumber) {
+        // Steal phase: show which team is trying to steal
+        const teamName = stealingTeamNumber === 1 ? team1Name : team2Name;
+        currentTurnText.textContent = `${teamName} is trying to steal the game!`;
+        currentTurnDisplay.classList.remove('face-off');
+    } else if (currentTurnPlayer) {
+        // Normal turn: show current player
+        currentTurnText.textContent = `Current Turn: ${currentTurnPlayerName || '-'}`;
+        currentTurnDisplay.classList.remove('face-off');
+    } else {
+        // No turn
+        currentTurnText.textContent = 'Current Turn: -';
+        currentTurnDisplay.classList.remove('face-off');
+    }
+}
+
+// Show game start countdown (3, 2, 1, Let's play!)
+function showGameStartCountdown(callback) {
+    countdownPopup.style.display = 'flex';
+    countdownNumber.classList.remove('message');
+
+    const steps = ['3', '2', '1', "Let's play Family Feud!"];
+    let stepIndex = 0;
+
+    function showStep() {
+        if (stepIndex >= steps.length) {
+            // Done with countdown
+            setTimeout(() => {
+                countdownPopup.style.display = 'none';
+                if (callback) callback();
+            }, 2000);
+            return;
+        }
+
+        const text = steps[stepIndex];
+        countdownNumber.textContent = text;
+
+        // Add animation class for each step
+        countdownNumber.style.animation = 'none';
+        countdownNumber.offsetHeight; // Trigger reflow
+        countdownNumber.style.animation = '';
+
+        // Use message class for final text
+        if (stepIndex === steps.length - 1) {
+            countdownNumber.classList.add('message');
+        } else {
+            countdownNumber.classList.remove('message');
+        }
+
+        stepIndex++;
+        setTimeout(showStep, 2000);
+    }
+
+    showStep();
+}
+
+// Show "Player says" popup (party mode)
+function showPlayerSaysPopup(playerName, playerAnswer) {
+    playerSaysNameText.textContent = playerName;
+    playerSaysAnswerText.textContent = `"${playerAnswer}"`;
+    playerSaysPopup.style.display = 'flex';
+    playerSaysPopupVisible = true;
+    // setTimeout removed - queue handles timing
+}
+
+// Process queued answer result after popup closes
+function processQueuedAnswerResult() {
+    // Handle animation if there's a queued result
+    if (answerResultQueue.length > 0) {
+        const { type, data } = answerResultQueue.shift();  // Take from front of queue
+        animationInProgress = true;
+
+        if (type === 'correct') {
+            showCorrectFeedback();
+            if (currentQuestion && data.index < currentQuestion.answers.length) {
+                revealAnswer(data.index);
+            }
+            roundPointsEarned = data.roundPointsEarned;
+        } else if (type === 'incorrect') {
+            showIncorrectFeedback();
+            // Delay strike update until after animation completes (1000ms)
+            setTimeout(() => {
+                strikes = data.strikes;
+                updateStrikes();
+            }, 1000);
+        } else if (type === 'stealFailed') {
+            showIncorrectFeedback();
+            // Delay state updates until after animation completes (1000ms)
+            setTimeout(() => {
+                stealPhaseActive = false;
+                stealingTeamNumber = null;
+                const winningTeamName = data.controllingTeam === 1 ? team1Name : team2Name;
+                roundWinnerMessage = `${winningTeamName} wins the round!`;
+                updateCurrentTurnDisplay();
+            }, 1000);
+        }
+    }
+
+    // ALWAYS process pending state after animation delay (even if no animation played)
+    partyProcessingTimeout = setTimeout(() => {
+        partyProcessingTimeout = null;
+        animationInProgress = false;
+        partyAnswerProcessing = false;  // Clear the processing flag
+        if (pendingEntryLog !== null) {
+            entryLog = pendingEntryLog;
+            pendingEntryLog = null;
+            renderEntryLog();
+        }
+        // Apply pending steal phase state
+        if (pendingStealPhaseData !== null) {
+            stealPhaseActive = true;
+            stealingTeamNumber = pendingStealPhaseData.stealingTeam;
+            if (pendingStealPhaseData.currentTurnPlayer) {
+                currentTurnPlayer = pendingStealPhaseData.currentTurnPlayer;
+            }
+            pendingStealPhaseData = null;
+            updateCurrentTurnDisplay();
+            if (playersPanel.style.display !== 'none') {
+                renderPlayersPanel();
+            }
+        }
+        // Start pending timer after entry log is updated
+        if (pendingTimerStart !== null) {
+            startAutoTimer(pendingTimerStart.seconds, handleAutoTimerExpiry);
+            pendingTimerStart = null;
+        }
+        // Resume popup queue processing after animation completes
+        processPopupQueue();
+
+        // Signal server that animations are complete so it can emit turn:changed
+        if (isPartyMode && socket) {
+            socket.emit('display:animationComplete');
+        }
+    }, 1000);
+}
+
+// Toggle players panel (party mode)
+function togglePlayersPanel() {
+    const isVisible = playersPanel.style.display !== 'none';
+    if (isVisible) {
+        playersPanel.style.display = 'none';
+        playersBtn.classList.remove('active');
+    } else {
+        renderPlayersPanel();
+        playersPanel.style.display = 'flex';
+        playersBtn.classList.add('active');
+    }
+}
+
+// Render players panel content
+function renderPlayersPanel() {
+    // Update team titles
+    playersTeam1Title.textContent = team1Name || 'Team 1';
+    playersTeam2Title.textContent = team2Name || 'Team 2';
+
+    // Get players by team
+    const team1Players = partyPlayers.filter(p => p.team === 1);
+    const team2Players = partyPlayers.filter(p => p.team === 2);
+
+    // Render Team 1 players
+    if (team1Players.length === 0) {
+        playersTeam1List.innerHTML = '<div class="players-empty">No players</div>';
+    } else {
+        playersTeam1List.innerHTML = team1Players.map(p => {
+            const isCurrentTurn = currentTurnPlayer && currentTurnPlayer.id === p.id;
+            const isInBattle = currentBattlePlayers.some(bp => bp && bp.id === p.id);
+            return `<div class="player-item ${isCurrentTurn ? 'current-turn' : ''} ${isInBattle ? 'in-battle' : ''}">${escapeHtml(p.name)}</div>`;
+        }).join('');
+    }
+
+    // Render Team 2 players
+    if (team2Players.length === 0) {
+        playersTeam2List.innerHTML = '<div class="players-empty">No players</div>';
+    } else {
+        playersTeam2List.innerHTML = team2Players.map(p => {
+            const isCurrentTurn = currentTurnPlayer && currentTurnPlayer.id === p.id;
+            const isInBattle = currentBattlePlayers.some(bp => bp && bp.id === p.id);
+            return `<div class="player-item ${isCurrentTurn ? 'current-turn' : ''} ${isInBattle ? 'in-battle' : ''}">${escapeHtml(p.name)}</div>`;
+        }).join('');
+    }
+
+    // Update current turn display
+    if (currentTurnPlayer) {
+        currentTurnName.textContent = currentTurnPlayer.name;
+        currentTurnName.className = `current-turn-name team-${currentTurnPlayer.team}`;
+    } else if (faceOffActive) {
+        currentTurnName.textContent = 'Face-off!';
+        currentTurnName.className = 'current-turn-name';
+    } else {
+        currentTurnName.textContent = '-';
+        currentTurnName.className = 'current-turn-name';
+    }
+}
+
+// Toggle QR codes panel (party mode)
+async function toggleQrCodesPanel() {
+    const isVisible = qrCodesPanel.style.display !== 'none';
+    if (isVisible) {
+        qrCodesPanel.style.display = 'none';
+        qrCodesBtn.classList.remove('active');
+    } else {
+        await loadQrCodesForPanel();
+        qrCodesPanel.style.display = 'flex';
+        qrCodesBtn.classList.add('active');
+    }
+}
+
+// Load QR codes for the panel
+async function loadQrCodesForPanel() {
+    if (!roomCode) return;
+
+    // Set room codes
+    panelHostRoomCode.textContent = roomCode;
+    panelPlayerRoomCode.textContent = roomCode;
+
+    // Update host connection status
+    updatePanelHostStatus();
+
+    try {
+        // Fetch host QR code
+        const hostQrResponse = await fetch(`/api/qr-code?room=${roomCode}`);
+        const hostQrData = await hostQrResponse.json();
+        panelHostQrImg.src = hostQrData.qrCode;
+        panelHostUrl.textContent = hostQrData.hostUrl;
+
+        // Fetch player QR code
+        const playerQrResponse = await fetch(`/api/player-qr-code?room=${roomCode}`);
+        const playerQrData = await playerQrResponse.json();
+        panelPlayerQrImg.src = playerQrData.qrCode;
+        panelPlayerUrl.textContent = playerQrData.playerUrl;
+    } catch (error) {
+        console.error('Error loading QR codes:', error);
+    }
+}
+
+// Update host connection status in QR panel
+function updatePanelHostStatus() {
+    // Check if socket exists and has host connected info
+    // We track this based on whether a host has connected to the room
+    if (hostConnected) {
+        panelHostStatusIndicator.classList.add('connected');
+        panelHostStatusText.textContent = 'Host connected';
+    } else {
+        panelHostStatusIndicator.classList.remove('connected');
+        panelHostStatusText.textContent = 'No host connected';
+    }
 }
 
 // Initialize Socket.IO for party mode display
 function initPartyDisplaySocket() {
-    socket = io();
+    socket = io({
+        reconnection: true,
+        reconnectionAttempts: 10,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000
+    });
 
     socket.on('connect', () => {
         console.log('Party display connected to server');
         socket.emit('display:join', roomCode);
+    });
+
+    socket.on('reconnect', (attemptNumber) => {
+        console.log('Party display reconnected after', attemptNumber, 'attempts');
+        // Re-join the room
+        if (roomCode) {
+            socket.emit('display:join', roomCode);
+            // Request full state resync
+            socket.emit('requestState');
+        }
+    });
+
+    socket.on('reconnect_attempt', (attemptNumber) => {
+        console.log('Party display reconnection attempt', attemptNumber);
+        partyHostStatusText.textContent = `Reconnecting... (attempt ${attemptNumber})`;
     });
 
     socket.on('display:joined', (data) => {
@@ -939,15 +1442,17 @@ function initPartyDisplaySocket() {
     });
 
     socket.on('host:connected', () => {
+        hostConnected = true;
         partyHostStatusIndicator.classList.add('connected');
         partyHostStatusText.textContent = 'Host connected!';
-        partyHostNextBtn.style.display = 'block';
+        updatePanelHostStatus();
     });
 
     socket.on('host:disconnected', () => {
+        hostConnected = false;
         partyHostStatusIndicator.classList.remove('connected');
         partyHostStatusText.textContent = 'Host disconnected. Waiting for reconnection...';
-        partyHostNextBtn.style.display = 'none';
+        updatePanelHostStatus();
     });
 
     // Player events
@@ -962,9 +1467,72 @@ function initPartyDisplaySocket() {
         renderPartyTeamAssignment();
     });
 
+    // Party screen navigation (from host or display)
+    socket.on('partyScreen:updated', (data) => {
+        if (data.screen === 'lobby') {
+            // Show player join screen
+            qrScreen.style.display = 'none';
+            partyHostQrScreen.style.display = 'none';
+            partyPlayerJoinScreen.style.display = 'flex';
+            partyTeamAssignmentScreen.style.display = 'none';
+            if (partyConfigScreen) partyConfigScreen.style.display = 'none';
+            gameContainer.style.display = 'none';
+            partyPlayerRoomCode.textContent = roomCode;
+            loadPartyPlayerQRCode();
+        } else if (data.screen === 'teams') {
+            // Show team assignment screen
+            qrScreen.style.display = 'none';
+            partyHostQrScreen.style.display = 'none';
+            partyPlayerJoinScreen.style.display = 'none';
+            partyTeamAssignmentScreen.style.display = 'flex';
+            if (partyConfigScreen) partyConfigScreen.style.display = 'none';
+            gameContainer.style.display = 'none';
+            renderPartyTeamAssignment();
+        } else if (data.screen === 'config') {
+            // Show configure game screen
+            qrScreen.style.display = 'none';
+            partyHostQrScreen.style.display = 'none';
+            partyPlayerJoinScreen.style.display = 'none';
+            partyTeamAssignmentScreen.style.display = 'none';
+            if (partyConfigScreen) partyConfigScreen.style.display = 'flex';
+            gameContainer.style.display = 'none';
+            updateConfigScreenDisplay();
+        } else if (data.screen === 'qr') {
+            // Show host QR screen
+            qrScreen.style.display = 'none';
+            partyHostQrScreen.style.display = 'flex';
+            partyPlayerJoinScreen.style.display = 'none';
+            partyTeamAssignmentScreen.style.display = 'none';
+            if (partyConfigScreen) partyConfigScreen.style.display = 'none';
+            gameContainer.style.display = 'none';
+        } else if (data.screen === 'game') {
+            // Host requested game start - trigger startPartyGame
+            if (partyConfigScreen) partyConfigScreen.style.display = 'none';
+            startPartyGame();
+        }
+    });
+
+    // Timer config updated from server
+    socket.on('timerConfig:updated', (data) => {
+        autoTimerEnabled = data.enabled;
+        timerConfig.buzzerTime = data.buzzerTime;
+        timerConfig.afterBuzzerTime = data.afterBuzzerTime;
+        timerConfig.regularTime = data.regularTime;
+        timerConfig.stealTime = data.stealTime;
+
+        // Update totalRounds if provided
+        if (data.totalRounds !== undefined) {
+            totalRounds = data.totalRounds;
+        }
+
+        // Update configure game screen display
+        updateConfigScreenDisplay();
+    });
+
     // Party game started
     socket.on('partyGame:started', (gameState) => {
         partyTeamAssignmentScreen.style.display = 'none';
+        if (partyConfigScreen) partyConfigScreen.style.display = 'none';
         gameContainer.style.display = 'block';
 
         // Apply game state
@@ -974,6 +1542,15 @@ function initPartyDisplaySocket() {
         currentRound = gameState.currentRound;
         team1Score = gameState.team1Score;
         team2Score = gameState.team2Score;
+
+        // Apply timer config from game state
+        if (gameState.timerConfig) {
+            autoTimerEnabled = gameState.timerConfig.enabled;
+            timerConfig.buzzerTime = gameState.timerConfig.buzzerTime;
+            timerConfig.afterBuzzerTime = gameState.timerConfig.afterBuzzerTime;
+            timerConfig.regularTime = gameState.timerConfig.regularTime;
+            timerConfig.stealTime = gameState.timerConfig.stealTime;
+        }
 
         // Update UI
         team1DisplayName.textContent = team1Name;
@@ -987,19 +1564,243 @@ function initPartyDisplaySocket() {
 
         // Hide controls in party display mode
         hideControlsForDisplayMode();
+
+        // Show party mode buttons
+        playersBtn.style.display = 'flex';
+        qrCodesBtn.style.display = 'flex';
+        // manageTeamsBtn is shown when host connects
+
+        // Show countdown, then notify server to start face-off
+        showGameStartCountdown(() => {
+            socket.emit('countdown:finished');
+        });
     });
 
     // Battle started
     socket.on('battle:started', (data) => {
+        stopAutoTimer(); // Reset timer for new battle
+        roundWinnerMessage = null; // Clear round winner message
         currentBattlePlayers = [data.team1Player, data.team2Player];
         faceOffActive = data.faceOffActive;
-        showBattlePopup(data.team1Player, data.team2Player);
+        faceOffAnswerPhase = false; // Reset for new battle
+        queuePopup(
+            () => showBattlePopup(data.team1Player, data.team2Player),
+            () => { battlePopup.style.display = 'none'; },
+            6000
+        );
+        updateCurrentTurnDisplay();
+        // Update players panel if visible
+        if (playersPanel.style.display !== 'none') {
+            renderPlayersPanel();
+        }
     });
 
     // Turn changed
     socket.on('turn:changed', (data) => {
         currentTurnPlayer = data.currentTurnPlayer;
+        currentTurnPlayerName = data.currentTurnPlayerName || null;
         faceOffActive = data.faceOffActive;
+        updateCurrentTurnDisplay();
+        // Update players panel if visible
+        if (playersPanel.style.display !== 'none') {
+            renderPlayersPanel();
+        }
+
+        // Queue timer start for after animation completes (if processing an answer)
+        if (data.faceOffPhase === 'resolved' && !stealPhaseActive) {
+            if (partyAnswerProcessing || animationInProgress) {
+                pendingTimerStart = { seconds: timerConfig.regularTime };
+            } else {
+                startAutoTimer(timerConfig.regularTime, handleAutoTimerExpiry);
+            }
+        }
+    });
+
+    // Buzzer result: someone won the buzzer
+    socket.on('buzzer:result', (data) => {
+        faceOffActive = false;
+        faceOffAnswerPhase = true;
+        currentTurnPlayerName = data.winnerName;
+        currentTurnPlayer = partyPlayers.find(p => p.id === data.winner);
+
+        // Show buzzer winner popup
+        queuePopup(
+            () => showBuzzerWinnerPopup(data.winnerName),
+            () => { document.getElementById('buzzer-winner-popup').style.display = 'none'; },
+            5000
+        );
+
+        // Update turn message to "[PlayerName] answer!"
+        updateCurrentTurnDisplay();
+
+        if (playersPanel.style.display !== 'none') {
+            renderPlayersPanel();
+        }
+
+        // Start buzzer time auto-timer
+        startAutoTimer(timerConfig.buzzerTime, handleAutoTimerExpiry);
+    });
+
+    // Face-off chain: next player's turn
+    socket.on('faceOff:chainNext', (data) => {
+        // Update current turn player for display
+        currentTurnPlayer = partyPlayers.find(p => p.id === data.nextPlayerId);
+        currentTurnPlayerName = data.nextPlayerName;
+        faceOffAnswerPhase = true; // Keep showing "[PlayerName] answer!" during chain
+        updateCurrentTurnDisplay();
+        if (playersPanel.style.display !== 'none') {
+            renderPlayersPanel();
+        }
+
+        // Queue timer start for after animation completes (if processing an answer)
+        if (partyAnswerProcessing || animationInProgress) {
+            pendingTimerStart = { seconds: timerConfig.afterBuzzerTime };
+        } else {
+            startAutoTimer(timerConfig.afterBuzzerTime, handleAutoTimerExpiry);
+        }
+    });
+
+    // Face-off won: a team won the face-off
+    socket.on('faceOff:won', (data) => {
+        // Update current turn player for display
+        currentTurnPlayer = partyPlayers.find(p => p.id === data.nextPlayerId);
+        currentTurnPlayerName = data.nextPlayerName;
+        faceOffActive = false;
+        faceOffAnswerPhase = false; // Face-off resolved, go back to normal turn display
+        updateCurrentTurnDisplay();
+        if (playersPanel.style.display !== 'none') {
+            renderPlayersPanel();
+        }
+
+        // Queue timer start for after animation completes (if processing an answer)
+        if (partyAnswerProcessing || animationInProgress) {
+            pendingTimerStart = { seconds: timerConfig.regularTime };
+        } else {
+            startAutoTimer(timerConfig.regularTime, handleAutoTimerExpiry);
+        }
+    });
+
+    // Steal phase started
+    socket.on('steal:phase', (data) => {
+        // Store pending steal data for popup
+        pendingStealData = data;
+
+        // Delay steal popup to appear after X animation finishes (~2.5s)
+        pendingStealTimeout = setTimeout(() => {
+            pendingStealTimeout = null;
+            pendingStealData = null;
+            queuePopup(
+                () => showStealPopup(data.stealingTeam),
+                () => { stealPopup.style.display = 'none'; },
+                5000
+            );
+            // Start steal time auto-timer after popup shows
+            startAutoTimer(timerConfig.stealTime, handleAutoTimerExpiry);
+        }, 2500);
+
+        // Queue steal phase state update if animation is in progress
+        if (partyAnswerProcessing || animationInProgress) {
+            pendingStealPhaseData = data;
+        } else {
+            // Apply immediately if no animation
+            stealPhaseActive = true;
+            stealingTeamNumber = data.stealingTeam;
+            if (data.currentTurnPlayer) {
+                currentTurnPlayer = data.currentTurnPlayer;
+            }
+            updateCurrentTurnDisplay();
+            if (playersPanel.style.display !== 'none') {
+                renderPlayersPanel();
+            }
+        }
+    });
+
+    // Steal phase ended - success
+    socket.on('steal:success', (data) => {
+        stopAutoTimer();
+        stopDisplayTimer();
+        stealPhaseActive = false;
+        stealingTeamNumber = null;
+        // Show round winner message
+        const winningTeamName = data.stealingTeam === 1 ? team1Name : team2Name;
+        roundWinnerMessage = `${winningTeamName} wins the round!`;
+        updateCurrentTurnDisplay();
+    });
+
+    // Steal phase ended - failed
+    socket.on('steal:failed', (data) => {
+        stopAutoTimer();
+        stopDisplayTimer();
+
+        // In party mode, queue the result if currently processing an answer
+        if (isPartyMode && partyAnswerProcessing) {
+            answerResultQueue.push({ type: 'stealFailed', data });
+            return;
+        }
+
+        showIncorrectFeedback();
+        stealPhaseActive = false;
+        stealingTeamNumber = null;
+        // Show round winner message - controlling team keeps points
+        const winningTeamName = data.controllingTeam === 1 ? team1Name : team2Name;
+        roundWinnerMessage = `${winningTeamName} wins the round!`;
+        updateCurrentTurnDisplay();
+    });
+
+    // Board cleared - team got all answers without steal
+    socket.on('board:cleared', (data) => {
+        stopAutoTimer();
+        stopDisplayTimer();
+        roundWinnerMessage = `${data.winningTeamName} wins the round!`;
+        updateCurrentTurnDisplay();
+    });
+
+    // Player submitted answer - show "Player says" popup
+    socket.on('partyAnswer:submitted', (data) => {
+        stopAutoTimer(); // Stop timer while processing answer
+        stopDisplayTimer(); // Stop the local display interval to prevent it from overwriting
+        timerDisplayStopped = true;  // Prevent timer:tick from overwriting
+        timerDisplay.textContent = '--:--';
+        mobileTimerDisplay.textContent = '--:--';
+        timerDisplay.classList.remove('running', 'warning', 'danger');
+        mobileTimerDisplay.classList.remove('running', 'warning', 'danger');
+
+        // Clear processing timeout but don't clear answerResultQueue - it may have pending results for earlier popups
+        if (partyProcessingTimeout) {
+            clearTimeout(partyProcessingTimeout);
+            partyProcessingTimeout = null;
+        }
+        pendingEntryLog = null;
+
+        // If popup queue has too many entries, trim non-essential ones
+        if (popupQueue.length > 2) {
+            popupQueue.length = 2;
+        }
+
+        partyAnswerProcessing = true;  // Set IMMEDIATELY before any queue logic
+
+        // If steal popup is pending, show it first before Survey Says
+        flushPendingStealPopup();
+
+        queuePopup(
+            () => showPlayerSaysPopup(data.playerName, data.playerAnswer),
+            () => { playerSaysPopup.style.display = 'none'; playerSaysPopupVisible = false; processQueuedAnswerResult(); },
+            4000
+        );
+
+        // Safety: ensure flags reset even if animation logic fails
+        if (partyProcessingSafetyTimeout) clearTimeout(partyProcessingSafetyTimeout);
+        partyProcessingSafetyTimeout = setTimeout(() => {
+            partyProcessingSafetyTimeout = null;
+            if (partyAnswerProcessing) {
+                partyAnswerProcessing = false;
+                if (pendingEntryLog !== null) {
+                    entryLog = pendingEntryLog;
+                    pendingEntryLog = null;
+                    renderEntryLog();
+                }
+            }
+        }, 8000);  // 8 seconds is longer than any animation sequence
     });
 
     // Reuse display mode handlers for game events
@@ -1024,6 +1825,13 @@ function initPartyDisplaySocket() {
         team2ScoreEl.textContent = team2Score;
 
         hideControlsForDisplayMode();
+
+        // Show countdown, then notify server if in party mode
+        showGameStartCountdown(() => {
+            if (isPartyMode) {
+                socket.emit('countdown:finished');
+            }
+        });
     });
 
     socket.on('question:loaded', (data) => {
@@ -1033,6 +1841,7 @@ function initPartyDisplaySocket() {
         currentRevealIndex = 0;
         roundPointsEarned = 0;
         correctGuessesThisRound = [];
+        roundWinnerMessage = null;
 
         questionText.textContent = currentQuestion.question;
         currentRoundEl.textContent = data.currentRound;
@@ -1065,6 +1874,13 @@ function initPartyDisplaySocket() {
     });
 
     socket.on('answer:correct', (data) => {
+        // In party mode, always queue if any popup activity is happening (belt & suspenders)
+        if (isPartyMode) {
+            if (partyAnswerProcessing || playerSaysPopupVisible || popupActive || popupQueue.length > 0) {
+                answerResultQueue.push({ type: 'correct', data });
+                return;
+            }
+        }
         showCorrectFeedback();
         if (currentQuestion && data.index < currentQuestion.answers.length) {
             revealAnswer(data.index);
@@ -1073,6 +1889,13 @@ function initPartyDisplaySocket() {
     });
 
     socket.on('answer:incorrect', (data) => {
+        // In party mode, always queue if any popup activity is happening (belt & suspenders)
+        if (isPartyMode) {
+            if (partyAnswerProcessing || playerSaysPopupVisible || popupActive || popupQueue.length > 0) {
+                answerResultQueue.push({ type: 'incorrect', data });
+                return;
+            }
+        }
         showIncorrectFeedback();
         strikes = data.strikes;
         updateStrikes();
@@ -1091,6 +1914,7 @@ function initPartyDisplaySocket() {
     });
 
     socket.on('timer:started', (data) => {
+        timerDisplayStopped = false;  // Allow timer updates again
         timerSeconds = data.seconds;
         timerRunning = true;
         updateTimerDisplay();
@@ -1110,6 +1934,7 @@ function initPartyDisplaySocket() {
     });
 
     socket.on('timer:tick', (data) => {
+        if (timerDisplayStopped) return;  // Don't update if timer is stopped
         timerSeconds = data.seconds;
         updateTimerDisplay();
     });
@@ -1117,10 +1942,18 @@ function initPartyDisplaySocket() {
     socket.on('timer:timesUp', () => {
         timerRunning = false;
         stopDisplayTimer();
-        showTimesUp();
+        // Only show popup if timer wasn't stopped by an answer submission
+        if (!timerDisplayStopped) {
+            showTimesUp();
+        }
     });
 
     socket.on('entryLog:updated', (data) => {
+        if (isPartyMode && (animationInProgress || partyAnswerProcessing)) {
+            // Queue entry log update until animation completes
+            pendingEntryLog = data.entryLog;
+            return;
+        }
         entryLog = data.entryLog;
         renderEntryLog();
     });
@@ -1156,11 +1989,18 @@ function initPartyDisplaySocket() {
     });
 
     socket.on('game:reset', (gameState) => {
+        stopAutoTimer(); // Stop any running timer
         gameContainer.style.display = 'none';
         endScreen.style.display = 'none';
+        roundSummaryScreen.style.display = 'none';
+        if (partyConfigScreen) partyConfigScreen.style.display = 'none';
 
         if (isPartyMode) {
             partyHostQrScreen.style.display = 'flex';
+            // Hide party mode buttons when game resets
+            playersBtn.style.display = 'none';
+            qrCodesBtn.style.display = 'none';
+            qrCodesPanel.style.display = 'none';
         } else {
             qrScreen.style.display = 'flex';
         }
@@ -1171,9 +2011,53 @@ function initPartyDisplaySocket() {
         team1Score = 0;
         team2Score = 0;
         currentRound = 1;
+
+        // Reset timer config to defaults
+        if (gameState.timerConfig) {
+            autoTimerEnabled = gameState.timerConfig.enabled;
+            timerConfig.buzzerTime = gameState.timerConfig.buzzerTime;
+            timerConfig.afterBuzzerTime = gameState.timerConfig.afterBuzzerTime;
+            timerConfig.regularTime = gameState.timerConfig.regularTime;
+            timerConfig.stealTime = gameState.timerConfig.stealTime;
+        } else {
+            autoTimerEnabled = true;
+            timerConfig.buzzerTime = 7;
+            timerConfig.afterBuzzerTime = 15;
+            timerConfig.regularTime = 35;
+            timerConfig.stealTime = 120;
+        }
+
+        // Reset party mode state variables
+        faceOffActive = false;
+        faceOffAnswerPhase = false;
+        stealPhaseActive = false;
+        stealingTeamNumber = null;
+        roundWinnerMessage = null;
+        currentTurnPlayer = null;
+        currentTurnPlayerName = null;
+        currentBattlePlayers = [];
+
+        // Reset answer slots DOM to prevent old answers showing during countdown
+        answerSlots.forEach(slot => {
+            slot.classList.remove('revealed');
+            const answerTextEl = slot.querySelector('.answer-text');
+            const answerPointsEl = slot.querySelector('.answer-points');
+            answerTextEl.textContent = '?';
+            answerPointsEl.textContent = '';
+        });
+
+        // Reset question text
+        questionText.textContent = 'Waiting for question...';
+
+        // Reset entry log and strikes display
+        entryLog = [];
+        renderEntryLog();
+        updateStrikes();
     });
 
     socket.on('game:ended', (data) => {
+        stopAutoTimer();
+        stopDisplayTimer();
         gameContainer.style.display = 'none';
         endScreen.style.display = 'flex';
 
@@ -1218,6 +2102,8 @@ function initPartyDisplaySocket() {
     });
 
     socket.on('round:summary', (data) => {
+        stopAutoTimer(); // Stop timer when round ends
+        stopDisplayTimer();
         lastPointsAwarded = data.pointsAwarded;
         lastWinningTeam = data.winningTeam;
         team1Score = data.team1Score;
@@ -1303,22 +2189,77 @@ function initPartyDisplaySocket() {
         hideControlsForDisplayMode();
     });
 
+    // State heartbeat - silently sync critical state
+    socket.on('state:heartbeat', (data) => {
+        // Quietly update scores if they differ
+        if (data.team1Score !== undefined && team1Score !== data.team1Score) {
+            team1Score = data.team1Score;
+            team1ScoreEl.textContent = team1Score;
+        }
+        if (data.team2Score !== undefined && team2Score !== data.team2Score) {
+            team2Score = data.team2Score;
+            team2ScoreEl.textContent = team2Score;
+        }
+        if (data.strikes !== undefined && strikes !== data.strikes) {
+            strikes = data.strikes;
+            updateStrikesDisplay();
+        }
+        if (data.currentRound !== undefined && currentRound !== data.currentRound) {
+            currentRound = data.currentRound;
+            currentRoundEl.textContent = currentRound;
+        }
+    });
+
     socket.on('disconnect', () => {
         console.log('Party display disconnected from server');
         partyHostStatusIndicator.classList.remove('connected');
         partyHostStatusText.textContent = 'Connection lost. Attempting to reconnect...';
     });
+
+    // Panel toggle from host
+    socket.on('panel:toggle', (data) => {
+        switch (data.panel) {
+            case 'tutorial':
+                toggleTutorialOverlay();
+                break;
+            case 'players':
+                togglePlayersPanel();
+                break;
+            case 'qrCodes':
+                toggleQrCodesPanel();
+                break;
+        }
+    });
 }
 
 // Initialize Socket.IO for display mode
 function initDisplaySocket() {
-    socket = io();
-    
+    socket = io({
+        reconnection: true,
+        reconnectionAttempts: 10,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000
+    });
+
     socket.on('connect', () => {
         console.log('Display connected to server');
         socket.emit('display:join', roomCode);
     });
-    
+
+    socket.on('reconnect', (attemptNumber) => {
+        console.log('Display reconnected after', attemptNumber, 'attempts');
+        // Re-join the room and resync state
+        if (roomCode) {
+            socket.emit('display:join', roomCode);
+            socket.emit('requestState');
+        }
+    });
+
+    socket.on('reconnect_attempt', (attemptNumber) => {
+        console.log('Display reconnection attempt', attemptNumber);
+        hostStatusText.textContent = `Reconnecting... (attempt ${attemptNumber})`;
+    });
+
     socket.on('display:joined', (data) => {
         console.log('Joined room:', data.roomCode);
         hostStatusText.textContent = 'Waiting for host to connect...';
@@ -1327,18 +2268,23 @@ function initDisplaySocket() {
     socket.on('host:connected', () => {
         hostStatusIndicator.classList.add('connected');
         hostStatusText.textContent = 'Host connected!';
+
+        // Transition from QR screen to setup screen
+        qrScreen.style.display = 'none';
+        setupScreen.style.display = 'flex';
     });
-    
+
     socket.on('host:disconnected', () => {
         hostStatusIndicator.classList.remove('connected');
         hostStatusText.textContent = 'Host disconnected. Waiting for reconnection...';
     });
-    
+
     socket.on('game:started', (gameState) => {
-        // Hide QR screen, show game
+        // Hide setup screens, show game
         qrScreen.style.display = 'none';
+        setupScreen.style.display = 'none';
         gameContainer.style.display = 'block';
-        
+
         // Apply game state
         team1Name = gameState.team1Name;
         team2Name = gameState.team2Name;
@@ -1346,7 +2292,7 @@ function initDisplaySocket() {
         currentRound = gameState.currentRound;
         team1Score = gameState.team1Score;
         team2Score = gameState.team2Score;
-        
+
         // Update UI
         team1DisplayName.textContent = team1Name;
         team2DisplayName.textContent = team2Name;
@@ -1356,11 +2302,14 @@ function initDisplaySocket() {
         totalRoundsEl.textContent = totalRounds;
         team1ScoreEl.textContent = team1Score;
         team2ScoreEl.textContent = team2Score;
-        
+
         // Hide controls in display mode
         hideControlsForDisplayMode();
+
+        // Show countdown (display mode doesn't need to trigger face-off)
+        showGameStartCountdown();
     });
-    
+
     socket.on('question:loaded', (data) => {
         currentQuestion = data.question;
         revealedAnswers = [];
@@ -1368,7 +2317,8 @@ function initDisplaySocket() {
         currentRevealIndex = 0;
         roundPointsEarned = 0;
         correctGuessesThisRound = [];
-        
+        roundWinnerMessage = null;
+
         // Update question display
         questionText.textContent = currentQuestion.question;
         currentRoundEl.textContent = data.currentRound;
@@ -1403,28 +2353,10 @@ function initDisplaySocket() {
             revealAnswer(data.index);
         }
     });
-    
-    socket.on('answer:correct', (data) => {
-        // Show correct feedback
-        showCorrectFeedback();
-        
-        // Reveal the answer
-        if (currentQuestion && data.index < currentQuestion.answers.length) {
-            revealAnswer(data.index);
-        }
-        
-        roundPointsEarned = data.roundPointsEarned;
-    });
-    
-    socket.on('answer:incorrect', (data) => {
-        // Show incorrect feedback
-        showIncorrectFeedback();
-        
-        // Update strikes
-        strikes = data.strikes;
-        updateStrikes();
-    });
-    
+
+    // Note: answer:correct and answer:incorrect handlers with party mode queue logic
+    // are defined earlier in the file - no duplicates needed here
+
     socket.on('strike:updated', (data) => {
         strikes = data.strikes;
         updateStrikes();
@@ -1445,19 +2377,20 @@ function initDisplaySocket() {
     });
     
     socket.on('timer:started', (data) => {
+        timerDisplayStopped = false;  // Allow timer updates again
         timerSeconds = data.seconds;
         timerRunning = true;
         updateTimerDisplay();
         startDisplayTimer();
     });
-    
+
     socket.on('timer:paused', () => {
         timerRunning = false;
         stopDisplayTimer();
         timerDisplay.classList.remove('running');
         mobileTimerDisplay.classList.remove('running');
     });
-    
+
     socket.on('timer:reset', (data) => {
         timerSeconds = data.seconds;
         timerRunning = false;
@@ -1466,28 +2399,30 @@ function initDisplaySocket() {
         mobileTimerDisplay.classList.remove('running', 'warning', 'danger');
         updateTimerDisplay();
     });
-    
+
     socket.on('timer:tick', (data) => {
+        if (timerDisplayStopped) return;  // Don't update if timer is stopped
         timerSeconds = data.seconds;
         updateTimerDisplay();
     });
-    
+
     socket.on('timer:timesUp', () => {
         timerRunning = false;
         stopDisplayTimer();
-        showTimesUp();
+        // Only show popup if timer wasn't stopped by an answer submission
+        if (!timerDisplayStopped) {
+            showTimesUp();
+        }
     });
-    
-    socket.on('entryLog:updated', (data) => {
-        entryLog = data.entryLog;
-        renderEntryLog();
-    });
-    
+
+    // Note: entryLog:updated handler with party mode animation delay logic
+    // is defined earlier in the file - no duplicate needed here
+
     socket.on('entryLog:cleared', () => {
         entryLog = [];
         renderEntryLog();
     });
-    
+
     socket.on('round:reset', () => {
         revealedAnswers = [];
         strikes = 0;
@@ -1518,6 +2453,7 @@ function initDisplaySocket() {
         // Go back to QR screen
         gameContainer.style.display = 'none';
         endScreen.style.display = 'none';
+        roundSummaryScreen.style.display = 'none';
         qrScreen.style.display = 'flex';
         
         // Reset state
@@ -1527,16 +2463,30 @@ function initDisplaySocket() {
         team1Score = 0;
         team2Score = 0;
         currentRound = 1;
-        
+
+        // Reset answer slots DOM to prevent old answers showing during countdown
+        answerSlots.forEach(slot => {
+            slot.classList.remove('revealed');
+            const answerTextEl = slot.querySelector('.answer-text');
+            const answerPointsEl = slot.querySelector('.answer-points');
+            answerTextEl.textContent = '?';
+            answerPointsEl.textContent = '';
+        });
+
+        // Reset question text
+        questionText.textContent = 'Waiting for question...';
+
         hostStatusIndicator.classList.add('connected');
         hostStatusText.textContent = 'Host connected - waiting for game setup...';
     });
     
     socket.on('game:ended', (data) => {
         // Show end screen
+        stopAutoTimer();
+        stopDisplayTimer();
         gameContainer.style.display = 'none';
         endScreen.style.display = 'flex';
-        
+
         team1Name = data.team1Name;
         team2Name = data.team2Name;
         team1Score = data.team1Score;
@@ -1591,12 +2541,13 @@ function initDisplaySocket() {
     });
     
     socket.on('round:summary', (data) => {
+        stopDisplayTimer();
         // Store round summary data
         lastPointsAwarded = data.pointsAwarded;
         lastWinningTeam = data.winningTeam;
         team1Score = data.team1Score;
         team2Score = data.team2Score;
-        
+
         // Build correct guesses array
         correctGuessesThisRound = data.correctGuesses || [];
         
@@ -1707,7 +2658,28 @@ function initDisplaySocket() {
         gameContainer.style.display = 'block';
         hideControlsForDisplayMode();
     });
-    
+
+    // State heartbeat - silently sync critical state
+    socket.on('state:heartbeat', (data) => {
+        // Quietly update scores if they differ
+        if (data.team1Score !== undefined && team1Score !== data.team1Score) {
+            team1Score = data.team1Score;
+            team1ScoreEl.textContent = team1Score;
+        }
+        if (data.team2Score !== undefined && team2Score !== data.team2Score) {
+            team2Score = data.team2Score;
+            team2ScoreEl.textContent = team2Score;
+        }
+        if (data.strikes !== undefined && strikes !== data.strikes) {
+            strikes = data.strikes;
+            updateStrikesDisplay();
+        }
+        if (data.currentRound !== undefined && currentRound !== data.currentRound) {
+            currentRound = data.currentRound;
+            currentRoundEl.textContent = currentRound;
+        }
+    });
+
     socket.on('gameState:update', (data) => {
         if (data.screen === 'setup') {
             // Back to QR screen in display mode
@@ -1726,6 +2698,21 @@ function initDisplaySocket() {
         console.log('Display disconnected from server');
         hostStatusIndicator.classList.remove('connected');
         hostStatusText.textContent = 'Connection lost. Attempting to reconnect...';
+    });
+
+    // Panel toggle from host
+    socket.on('panel:toggle', (data) => {
+        switch (data.panel) {
+            case 'tutorial':
+                toggleTutorialOverlay();
+                break;
+            case 'players':
+                togglePlayersPanel();
+                break;
+            case 'qrCodes':
+                toggleQrCodesPanel();
+                break;
+        }
     });
 }
 
@@ -1971,6 +2958,17 @@ function openTutorialOverlay() {
         backToModeFromTutorialBtn.style.display = 'none'; // Hide in these cases
     } else {
         backToModeFromTutorialBtn.style.display = 'block';
+    }
+}
+
+// Toggle Tutorial Overlay (for host panel toggle)
+function toggleTutorialOverlay() {
+    if (tutorialScreen.style.display === 'flex') {
+        // Tutorial is open - close it
+        handleContinueFromTutorial();
+    } else {
+        // Tutorial is closed - open it
+        openTutorialOverlay();
     }
 }
 
@@ -2223,15 +3221,15 @@ function updateTimerDisplay() {
     const minutes = Math.floor(timerSeconds / 60);
     const seconds = timerSeconds % 60;
     const timeText = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-    
+
     // Update both displays
     timerDisplay.textContent = timeText;
     mobileTimerDisplay.textContent = timeText;
-    
+
     // Update display color based on time remaining
     timerDisplay.classList.remove('running', 'warning', 'danger');
     mobileTimerDisplay.classList.remove('running', 'warning', 'danger');
-    
+
     if (timerRunning) {
         if (timerSeconds <= 5) {
             timerDisplay.classList.add('danger');
@@ -2243,6 +3241,102 @@ function updateTimerDisplay() {
             timerDisplay.classList.add('running');
             mobileTimerDisplay.classList.add('running');
         }
+    }
+}
+
+// Update Configure Game screen display
+function updateConfigScreenDisplay() {
+    if (configRoundsDisplay) {
+        configRoundsDisplay.textContent = totalRounds;
+    }
+    if (configTimerStatus) {
+        configTimerStatus.textContent = autoTimerEnabled ? 'Enabled' : 'Disabled';
+        configTimerStatus.classList.toggle('disabled', !autoTimerEnabled);
+    }
+    if (configTimerDetails) {
+        configTimerDetails.style.display = autoTimerEnabled ? 'flex' : 'none';
+    }
+    if (configBuzzerTime) {
+        configBuzzerTime.textContent = timerConfig.buzzerTime + 's';
+    }
+    if (configAfterBuzzerTime) {
+        configAfterBuzzerTime.textContent = timerConfig.afterBuzzerTime + 's';
+    }
+    if (configRegularTime) {
+        configRegularTime.textContent = timerConfig.regularTime + 's';
+    }
+    if (configStealTime) {
+        // Format steal time as minutes:seconds if over 60s
+        const stealMins = Math.floor(timerConfig.stealTime / 60);
+        const stealSecs = timerConfig.stealTime % 60;
+        if (stealMins > 0) {
+            configStealTime.textContent = `${stealMins}:${stealSecs.toString().padStart(2, '0')}`;
+        } else {
+            configStealTime.textContent = timerConfig.stealTime + 's';
+        }
+    }
+}
+
+// ============ AUTO TIMER FUNCTIONS ============
+
+// Start automatic timer for game phases
+function startAutoTimer(seconds, onExpire) {
+    if (!autoTimerEnabled || !isPartyMode) return;
+
+    stopAutoTimer();
+    autoTimerSeconds = seconds;
+    timerSeconds = seconds;
+    timerRunning = true;
+    updateTimerDisplay();
+
+    // Emit timer:start to broadcast to all clients (including players)
+    if (socket) {
+        socket.emit('timer:start', { seconds: autoTimerSeconds });
+    }
+
+    autoTimerInterval = setInterval(() => {
+        autoTimerSeconds--;
+        timerSeconds = autoTimerSeconds;
+        updateTimerDisplay();
+
+        // Emit timer:update to keep player devices in sync
+        if (socket) {
+            socket.emit('timer:update', { seconds: autoTimerSeconds });
+        }
+
+        if (autoTimerSeconds <= 0) {
+            stopAutoTimer();
+            // Emit timer:finished so players see Time's Up
+            if (socket) {
+                socket.emit('timer:finished');
+            }
+            if (onExpire) {
+                onExpire();
+            }
+        }
+    }, 1000);
+}
+
+// Stop automatic timer
+function stopAutoTimer() {
+    if (autoTimerInterval) {
+        clearInterval(autoTimerInterval);
+        autoTimerInterval = null;
+    }
+    timerRunning = false;
+    timerDisplay.classList.remove('running', 'warning', 'danger');
+    mobileTimerDisplay.classList.remove('running', 'warning', 'danger');
+
+    // Notify players that timer has stopped
+    if (socket && isPartyMode) {
+        socket.emit('timer:stop');
+    }
+}
+
+// Handle auto-timer expiry (treat as wrong answer)
+function handleAutoTimerExpiry() {
+    if (socket && isPartyMode) {
+        socket.emit('autoTimer:expired');
     }
 }
 
@@ -2518,9 +3612,11 @@ async function checkPlayerAnswer() {
             if (matchedIndex !== -1 && !revealedAnswers.includes(matchedIndex)) {
                 // Show correct feedback (confetti + green overlay)
                 showCorrectFeedback();
-                
-                // Log the correct entry
-                addEntryToLog(playerAnswer, true);
+
+                // Log the correct entry after animation completes (1000ms)
+                setTimeout(() => {
+                    addEntryToLog(playerAnswer, true);
+                }, 1000);
                 
                 // Reveal the matching answer
                 revealAnswer(matchedIndex);
@@ -2552,12 +3648,12 @@ async function checkPlayerAnswer() {
         } else {
             // Show incorrect feedback (big strike + red overlay)
             showIncorrectFeedback();
-            
-            // Log the incorrect entry
-            addEntryToLog(playerAnswer, false);
-            
-            // No match - add a strike
-            addStrike();
+
+            // Log the incorrect entry and add strike after animation completes (1000ms)
+            setTimeout(() => {
+                addEntryToLog(playerAnswer, false);
+                addStrike();
+            }, 1000);
             checkStatus.textContent = `No match! Strike added. Reason: ${jsonResponse.reason || 'Answer not found on board'}`;
             checkStatus.className = 'check-status no-match';
         }

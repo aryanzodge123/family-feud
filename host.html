@@ -53,10 +53,10 @@
         <!-- Navigation Tabs -->
         <div class="host-nav-tabs">
             <button class="nav-tab active" data-tab="game">🎮 Game</button>
-            <button class="nav-tab" data-tab="answer">✎ Answer</button>
-            <button class="nav-tab party-tab" data-tab="party" style="display: none;">🎉 Turn</button>
-            <button class="nav-tab" data-tab="timer">⏱ Timer</button>
-            <button class="nav-tab" data-tab="log">📋 Log</button>
+            <button class="panel-toggle-btn" id="host-how-to-play-btn">❓ How to Play</button>
+            <button class="panel-toggle-btn" id="host-show-players-btn">👥 Players</button>
+            <button class="panel-toggle-btn" id="host-join-game-btn">📱 Join Game</button>
+            <button class="nav-tab teams-tab" data-tab="teams" style="display: none;">👥 Teams</button>
             <button class="nav-tab help-tab" data-tab="help">❓</button>
         </div>
 
@@ -80,6 +80,10 @@
                 <span class="strike-x" id="host-strike-1">✗</span>
                 <span class="strike-x" id="host-strike-2">✗</span>
                 <span class="strike-x" id="host-strike-3">✗</span>
+            </div>
+            <div class="host-turn-status-bar" id="host-turn-status-bar" style="display: none;">
+                <span class="turn-label">Current Turn:</span>
+                <span class="turn-player" id="host-turn-display">-</span>
             </div>
         </div>
 
@@ -132,14 +136,10 @@
             </div>
 
             <!-- Main Game Controls -->
-            <div class="control-grid">
-                <button class="control-btn primary" id="host-new-question-btn">
+            <div class="control-single">
+                <button class="control-btn primary full-width" id="host-new-question-btn">
                     <span class="btn-icon">📝</span>
                     <span class="btn-text">New Question</span>
-                </button>
-                <button class="control-btn secondary" id="host-reveal-next-btn">
-                    <span class="btn-icon">👁</span>
-                    <span class="btn-text">Reveal Next</span>
                 </button>
             </div>
 
@@ -155,158 +155,44 @@
                 </button>
             </div>
 
-            <!-- Points Controls -->
-            <div class="points-section">
-                <div class="points-header">Award Points</div>
-                <div class="points-amount">
-                    <label>Points:</label>
-                    <input type="number" id="host-points-input" value="0" min="0">
-                    <span class="points-auto" id="host-round-points">(Round: 0)</span>
-                </div>
-                <div class="points-team-buttons">
-                    <button class="team-award-btn team1" id="host-award-team1-btn">
-                        <span id="host-award-team1-name">Team 1</span>
-                    </button>
-                    <button class="team-award-btn team2" id="host-award-team2-btn">
-                        <span id="host-award-team2-name">Team 2</span>
-                    </button>
-                </div>
-            </div>
-
             <!-- Game Flow Controls -->
             <div class="flow-controls">
-                <button class="flow-btn next-round" id="host-next-round-btn">→ Next Round</button>
+                <button class="flow-btn next-round" id="host-next-round-btn">End Round</button>
                 <button class="flow-btn warning" id="host-reset-round-btn">Reset Round</button>
                 <button class="flow-btn danger" id="host-end-game-btn">End Game</button>
             </div>
         </div>
 
-        <!-- Tab Content: Answer Check -->
-        <div class="tab-content" id="tab-answer">
-            <div class="answer-check-section">
-                <div class="answer-input-wrapper">
-                    <label class="answer-label">Enter Player's Answer</label>
-                    <input type="text" id="host-answer-input" placeholder="Type answer here..." autocomplete="off">
-                    <button class="check-btn" id="host-check-answer-btn">Check Answer</button>
-                </div>
-                
-                <div class="answer-result" id="host-answer-result" style="display: none;">
-                    <div class="result-header" id="result-header">Result</div>
-                    <div class="result-details">
-                        <div class="result-item">
-                            <span class="result-label">Match:</span>
-                            <span class="result-value" id="result-match">-</span>
-                        </div>
-                        <div class="result-item">
-                            <span class="result-label">Matched Answer:</span>
-                            <span class="result-value" id="result-matched-answer">-</span>
-                        </div>
-                        <div class="result-item">
-                            <span class="result-label">Confidence:</span>
-                            <span class="result-value" id="result-confidence">-</span>
-                        </div>
-                        <div class="result-item full-width">
-                            <span class="result-label">Reason:</span>
-                            <span class="result-value" id="result-reason">-</span>
+
+        <!-- Tab Content: Manage Teams (Party Mode) -->
+        <div class="tab-content" id="tab-teams">
+            <div class="teams-section">
+                <h3 class="teams-section-title">Manage Teams</h3>
+
+                <div class="teams-grid">
+                    <!-- Team 1 -->
+                    <div class="team-manage-column team1-column">
+                        <h4 class="team-manage-title" id="host-manage-team1-title">Team 1</h4>
+                        <div class="team-manage-list" id="host-manage-team1-list">
+                            <div class="team-manage-empty">No players</div>
                         </div>
                     </div>
-                </div>
-                
-                <div class="answer-checking" id="host-answer-checking" style="display: none;">
-                    <div class="spinner"></div>
-                    <span>Checking answer...</span>
-                </div>
-            </div>
-        </div>
 
-        <!-- Tab Content: Party Turn Control -->
-        <div class="tab-content" id="tab-party">
-            <div class="party-turn-section">
-                <div class="party-battle-info">
-                    <h3 class="party-section-title">Current Battle</h3>
-                    <div class="party-battle-players">
-                        <div class="party-battle-player team1">
-                            <span class="battle-team-label">Team 1</span>
-                            <span class="battle-player-name" id="host-battle-player1">-</span>
-                        </div>
-                        <span class="battle-vs">VS</span>
-                        <div class="party-battle-player team2">
-                            <span class="battle-team-label">Team 2</span>
-                            <span class="battle-player-name" id="host-battle-player2">-</span>
+                    <!-- Unassigned -->
+                    <div class="team-manage-column unassigned-column">
+                        <h4 class="team-manage-title">Unassigned</h4>
+                        <div class="team-manage-list" id="host-manage-unassigned-list">
+                            <div class="team-manage-empty">No unassigned</div>
                         </div>
                     </div>
-                </div>
 
-                <div class="party-turn-status">
-                    <span class="turn-label">Current Turn:</span>
-                    <span class="turn-player" id="host-current-turn-player">Face-off in progress</span>
-                </div>
-
-                <div class="party-turn-controls">
-                    <h3 class="party-section-title">Give Turn To</h3>
-                    <div class="turn-buttons">
-                        <button class="turn-btn team1" id="host-give-turn-player1-btn">
-                            <span id="host-turn-player1-name">Player 1</span>
-                        </button>
-                        <button class="turn-btn team2" id="host-give-turn-player2-btn">
-                            <span id="host-turn-player2-name">Player 2</span>
-                        </button>
+                    <!-- Team 2 -->
+                    <div class="team-manage-column team2-column">
+                        <h4 class="team-manage-title" id="host-manage-team2-title">Team 2</h4>
+                        <div class="team-manage-list" id="host-manage-team2-list">
+                            <div class="team-manage-empty">No players</div>
+                        </div>
                     </div>
-                </div>
-
-                <div class="party-battle-controls">
-                    <button class="battle-control-btn" id="host-next-battle-btn">
-                        <span class="btn-icon">⏭</span>
-                        <span>Next Battle</span>
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Tab Content: Timer -->
-        <div class="tab-content" id="tab-timer">
-            <div class="timer-section">
-                <div class="timer-display-large" id="host-timer-display">00:30</div>
-                
-                <div class="timer-presets">
-                    <button class="preset-btn" data-seconds="15">15s</button>
-                    <button class="preset-btn" data-seconds="30">30s</button>
-                    <button class="preset-btn" data-seconds="45">45s</button>
-                    <button class="preset-btn" data-seconds="60">60s</button>
-                </div>
-                
-                <div class="timer-custom">
-                    <label>Custom:</label>
-                    <input type="number" id="host-timer-input" value="30" min="1" max="999">
-                    <span>seconds</span>
-                </div>
-                
-                <div class="timer-controls">
-                    <button class="timer-control-btn start" id="host-timer-start-btn">
-                        <span class="btn-icon">▶</span>
-                        <span>Start</span>
-                    </button>
-                    <button class="timer-control-btn pause" id="host-timer-pause-btn">
-                        <span class="btn-icon">⏸</span>
-                        <span>Pause</span>
-                    </button>
-                    <button class="timer-control-btn reset" id="host-timer-reset-btn">
-                        <span class="btn-icon">↺</span>
-                        <span>Reset</span>
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Tab Content: Entry Log -->
-        <div class="tab-content" id="tab-log">
-            <div class="log-section">
-                <div class="log-header">
-                    <span>Entry Log</span>
-                    <button class="clear-log-btn" id="host-clear-log-btn">Clear</button>
-                </div>
-                <div class="log-list" id="host-log-list">
-                    <div class="log-empty">No entries yet</div>
                 </div>
             </div>
         </div>
@@ -328,10 +214,13 @@
                 </div>
 
                 <div class="help-card">
-                    <h3>✎ Answer Checking</h3>
-                    <p>Type what the contestant said in the Answer tab. The AI will check if it matches any answer on the board.</p>
-                    <p>✓ Correct = Confetti + Auto-reveal</p>
-                    <p>✗ Wrong = Strike added</p>
+                    <h3>📺 Display Controls</h3>
+                    <p>Use the toggle buttons to control what players see:</p>
+                    <ul>
+                        <li><strong>How to Play</strong> — Show tutorial overlay</li>
+                        <li><strong>Players</strong> — Show connected players</li>
+                        <li><strong>Join Game</strong> — Show QR codes for joining</li>
+                    </ul>
                 </div>
 
                 <div class="help-card">
@@ -374,13 +263,82 @@
                 </div>
                 <input type="number" id="host-custom-rounds" placeholder="Custom" min="1" max="50">
             </div>
-            
+
+            <div class="timer-config-section">
+                <h3 class="timer-config-title">Timer Settings</h3>
+                <div class="timer-toggle-row">
+                    <label>Automatic Timer</label>
+                    <label class="switch">
+                        <input type="checkbox" id="auto-timer-toggle" checked>
+                        <span class="slider round"></span>
+                    </label>
+                </div>
+                <div class="timer-inputs" id="timer-inputs">
+                    <div class="timer-input-row">
+                        <label>Buzzer answer time (sec)</label>
+                        <input type="number" id="buzzer-time-input" value="7" min="1" max="60">
+                    </div>
+                    <div class="timer-input-row">
+                        <label>After buzzer time (sec)</label>
+                        <input type="number" id="after-buzzer-time-input" value="15" min="1" max="60">
+                    </div>
+                    <div class="timer-input-row">
+                        <label>Regular game time (sec)</label>
+                        <input type="number" id="regular-time-input" value="35" min="1" max="120">
+                    </div>
+                    <div class="timer-input-row">
+                        <label>Steal time (sec)</label>
+                        <input type="number" id="steal-time-input" value="120" min="1" max="300">
+                    </div>
+                </div>
+            </div>
+
             <button class="start-game-btn" id="host-start-game-btn">START GAME</button>
-            
+
             <button class="setup-help-btn" id="host-setup-help-btn">
                 <span class="help-icon">❓</span>
                 <span class="help-text">How to Play</span>
             </button>
+
+            <!-- Party Mode Flow Control (shown during party mode setup) -->
+            <div class="party-flow-control" id="party-flow-control" style="display: none;">
+                <button class="party-flow-btn" id="host-party-next-btn">
+                    <span class="btn-text" id="host-party-next-text">Next →</span>
+                </button>
+                <button class="party-flow-btn back" id="host-party-back-btn" style="display: none;">
+                    <span class="btn-text">← Back</span>
+                </button>
+            </div>
+
+            <!-- Inline Team Management (shown when on teams screen) -->
+            <div id="host-setup-teams" class="setup-teams-section" style="display: none;">
+                <div class="teams-section">
+                    <h3 class="teams-section-title">Manage Teams</h3>
+                    <div class="teams-grid">
+                        <!-- Team 1 -->
+                        <div class="team-manage-column team1-column">
+                            <h4 class="team-manage-title" id="host-setup-team1-title">Team 1</h4>
+                            <div class="team-manage-list" id="host-setup-team1-list">
+                                <div class="team-manage-empty">No players</div>
+                            </div>
+                        </div>
+                        <!-- Unassigned -->
+                        <div class="team-manage-column unassigned-column">
+                            <h4 class="team-manage-title">Unassigned</h4>
+                            <div class="team-manage-list" id="host-setup-unassigned-list">
+                                <div class="team-manage-empty">No unassigned</div>
+                            </div>
+                        </div>
+                        <!-- Team 2 -->
+                        <div class="team-manage-column team2-column">
+                            <h4 class="team-manage-title" id="host-setup-team2-title">Team 2</h4>
+                            <div class="team-manage-list" id="host-setup-team2-list">
+                                <div class="team-manage-empty">No players</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Navigation Controls -->

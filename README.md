@@ -1,132 +1,110 @@
 # Family Feud Game
 
-A web-based Family Feud game with ChatGPT-powered answer checking.
+A web-based Family Feud game with AI-powered answer checking. Supports three modes: single-device, two-device (display + host), and party mode (display + host + player phones).
+
+## Tech Stack
+
+- **Runtime:** Node.js (no framework -- pure HTTP server)
+- **Realtime:** Socket.IO v4.7.4
+- **Frontend:** Vanilla JS, HTML, CSS (no build step)
+- **AI:** OpenAI API (gpt-4o-mini) for answer matching
+- **QR Codes:** `qrcode` npm package (server-side generation)
+- **Questions:** Loaded from `questions1.csv` at runtime
 
 ## Setup
 
-1. **Install Node.js** (if not already installed)
-   - Download from https://nodejs.org/
+1. **Install Node.js** -- https://nodejs.org/
 
-2. **Configure API Key**
-   - Copy `config.json.example` to `config.json`
-   - Open `config.json` and replace `YOUR_OPENAI_API_KEY_HERE` with your actual OpenAI API key
-   - Get your API key from https://platform.openai.com/api-keys
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
 
-3. **Start the Server**
+3. **Configure API Key** -- pick one method:
+   - **Environment variable (recommended):** `export OPENAI_API_KEY=your-key-here`
+   - **Config file:** Copy `config.json.example` to `config.json` and add your key
+   - Get a key at https://platform.openai.com/api-keys
+
+4. **Start the server**
    ```bash
    node server.js
    ```
 
-4. **Open in Browser**
-   - Navigate to `http://localhost:3000`
-   - The game will load automatically
+5. **Open in browser** -- http://localhost:3000
 
-## How to Play
+## Game Modes
 
-1. Click "New Question" to load a question
-2. When a player gives an answer, type it in the "Player Answer Check" box
-3. Click "Check Answer" or press Enter
-4. The system will automatically:
-   - Reveal the answer if it matches (and auto-fill points)
-   - Add a strike if it doesn't match
+### Single Device Mode
+One screen with game board and controls. Good for quick play or testing.
+- Keyboard shortcuts: **N** = New Question, **R** = Reveal, **S** = Strike, **A** = Add Points
 
-## Files
+### Display Mode (2 Devices)
+TV/projector shows the game board. Host controls from a phone.
+1. Select "Display Mode" on the TV
+2. Scan the QR code with your phone to open the host panel
+3. Enter the password to connect
+4. Control the game from your phone
 
-- `index.html` - Main game interface
-- `styles.css` - Styling
-- `script.js` - Frontend game logic
-- `server.js` - Backend server (handles ChatGPT API calls)
-- `config.json` - Configuration file (contains API key - **DO NOT COMMIT**)
-- `questions.csv` - Game questions and answers
-- `package.json` - Node.js dependencies
+### Party Mode (3+ Devices)
+TV/projector + host phone + player phones. Players buzz in and answer from their own devices.
+1. Select "Party Mode" on the TV
+2. Host scans QR code to connect
+3. Players scan the player QR code to join
+4. Host assigns players to teams
+5. Configure rounds and timer settings
+6. Start the game -- face-offs, turn rotation, and steal phases run automatically
 
-## GitHub Repository
+## File Structure
 
-### Getting Started
+```
+server.js       -- Node.js HTTP server + Socket.IO backend
+script.js       -- Main display/game logic (runs in index.html)
+host.js         -- Host control panel logic (runs in host.html)
+player.js       -- Player interface logic (runs in player.html)
+index.html      -- Game display page (TV/projector screen)
+host.html       -- Host control panel page (phone)
+player.html     -- Player interface page (phone)
+styles.css      -- Display page styles
+host.css        -- Host page styles
+player.css      -- Player page styles
+questions1.csv  -- Question database (CSV format)
+package.json    -- Dependencies: socket.io, qrcode
+```
 
-To clone and set up this repository:
+## Architecture
 
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd AZ
-   ```
+See [`docs/CODEMAPS/`](docs/CODEMAPS/) for detailed architecture documentation:
 
-2. **Set up configuration**
-   ```bash
-   cp config.json.example config.json
-   ```
-   Then edit `config.json` and add your OpenAI API key.
+- [INDEX.md](docs/CODEMAPS/INDEX.md) -- Architecture overview with diagrams
+- [server.md](docs/CODEMAPS/server.md) -- Backend: HTTP endpoints, Socket.IO events, room management
+- [display.md](docs/CODEMAPS/display.md) -- Display page: screens, popups, game logic
+- [host.md](docs/CODEMAPS/host.md) -- Host panel: authentication, controls, party flow
+- [player.md](docs/CODEMAPS/player.md) -- Player interface: buzzer, answers, turns
+- [socket-events.md](docs/CODEMAPS/socket-events.md) -- Complete Socket.IO event reference
 
-3. **Run the application**
-   ```bash
-   node server.js
-   ```
+## Deployment
 
-### Repository
+### Render (Recommended)
 
-[GitHub Repository](https://github.com/aryanzodge123/family-feud) - View the source code on GitHub
+1. Create a Web Service at https://render.com and connect your GitHub repo
+2. Add the `OPENAI_API_KEY` environment variable in Render dashboard
+3. Pushes to `main` trigger automatic deployment
 
-## CI/CD Pipeline
+### Other Platforms
 
-This repository uses GitHub Actions for continuous integration and deployment. Every push to the `main` branch automatically triggers:
+Works on any platform that runs Node.js (Railway, Fly.io, Heroku, etc.). Set `OPENAI_API_KEY` as an environment variable and run `node server.js`.
 
-1. **Secret Scanning** - Scans the codebase for exposed API keys, tokens, or credentials
-2. **Build & Validation** - Validates Node.js syntax and ensures all required files are present
-3. **Deployment** - Automatically deploys to production (if configured)
+## CI/CD
 
-### Workflow Details
+GitHub Actions pipeline runs on pushes and PRs to `main`/`master`:
+1. **Secret Scanning** -- checks for exposed credentials
+2. **Build Validation** -- validates syntax and required files
+3. **Deployment** -- deploys to Render (if secrets configured)
 
-The CI/CD pipeline runs on:
-- Every push to `main` or `master` branch
-- Pull requests to `main` or `master` branch
+Required GitHub secrets for deployment: `RENDER_API_KEY`, `RENDER_SERVICE_ID`.
 
-### Setting Up Deployment
+## Security
 
-#### Option 1: Deploy to Render (Recommended)
-
-1. **Create a Render Account**
-   - Sign up at https://render.com
-   - Create a new Web Service
-   - Connect your GitHub repository
-
-2. **Configure GitHub Secrets**
-   - Go to your repository Settings → Secrets and variables → Actions
-   - Add the following secrets:
-     - `RENDER_API_KEY`: Get from https://dashboard.render.com/account/api-keys
-     - `RENDER_SERVICE_ID`: Found in your Render service settings (Service Details)
-
-3. **Configure Render Environment Variables**
-   - In your Render dashboard, go to your service → Environment
-   - Add: `OPENAI_API_KEY` = your OpenAI API key
-   - The `PORT` variable is automatically set by Render
-
-4. **Automatic Deployments**
-   - Once configured, every push to `main` will trigger a deployment
-   - Render will automatically detect the `Procfile` and deploy your service
-
-#### Option 2: Other Platforms
-
-The workflow can be adapted for other platforms like Railway, Fly.io, or Heroku by modifying the deployment job in `.github/workflows/deploy.yml`.
-
-### Required GitHub Secrets
-
-For automated deployment, you need to configure these secrets in your GitHub repository:
-
-- `RENDER_API_KEY` (if using Render) - Your Render API key
-- `RENDER_SERVICE_ID` (if using Render) - Your Render service ID
-
-**Note:** The OpenAI API key should be configured in your hosting platform's environment variables, NOT in GitHub secrets for security.
-
-### Local Development vs Production
-
-- **Local Development**: Uses `config.json` file for the API key
-- **Production**: Uses `OPENAI_API_KEY` environment variable (more secure)
-- The server automatically detects which method to use
-
-## Security Note
-
-The `config.json` file contains your API key and should never be committed to version control. It's already included in `.gitignore`. Always use `config.json.example` as a template for creating your local `config.json` file.
-
-The CI/CD pipeline automatically scans for secrets and will fail if any credentials are detected in committed files.
-
+- `config.json` is in `.gitignore` -- never commit API keys
+- In production, use the `OPENAI_API_KEY` environment variable instead of `config.json`
+- The CI pipeline scans for exposed secrets automatically

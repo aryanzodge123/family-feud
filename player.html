@@ -39,7 +39,7 @@
                 <div class="waiting-icon">
                     <div class="spinner-large"></div>
                 </div>
-                <p class="waiting-text">Waiting for game to start...</p>
+                <p class="waiting-text" id="waiting-text">Waiting to be added to a team...</p>
                 <p class="player-name-display">Playing as: <span id="display-player-name">-</span></p>
             </div>
         </div>
@@ -53,9 +53,22 @@
                 <span class="round-text">Round <span id="player-current-round">1</span>/<span id="player-total-rounds">7</span></span>
             </div>
 
+            <!-- Player Name Display -->
+            <div class="game-player-name">
+                Playing as: <span id="game-display-player-name">-</span>
+            </div>
+
             <!-- Question Display -->
             <div class="question-box">
                 <p class="question-text" id="player-question-text">Waiting for question...</p>
+            </div>
+
+            <!-- Buzzer Section (Face-Off) -->
+            <div id="buzzer-section" class="buzzer-section" style="display: none;">
+                <div class="buzzer-message" id="buzzer-message">Get Ready!</div>
+                <button type="button" class="buzzer-btn" id="buzzer-btn" disabled>
+                    BUZZ!
+                </button>
             </div>
 
             <!-- Turn Indicator & Answer Input -->
@@ -89,6 +102,12 @@
             <div class="timer-section">
                 <div class="timer-display" id="player-timer-display">00:00</div>
             </div>
+        </div>
+
+        <!-- Screen Ring Overlay (Buzzer Result) -->
+        <div class="screen-ring" id="screen-ring"></div>
+        <div class="too-slow-banner" id="too-slow-banner" style="display: none;">
+            You weren't fast enough!
         </div>
     </div>
 
